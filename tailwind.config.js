@@ -172,14 +172,15 @@ module.exports = {
         },
       },
       fontFamily: {
-        heading: undefined,
-        body: undefined,
-        mono: undefined,
+        heading: ['SpaceGrotesk-SemiBold'],
+        body: ['SpaceGrotesk-Regular'],
+        mono: ['SpaceGrotesk-Regular'],
         jakarta: ['var(--font-plus-jakarta-sans)'],
         roboto: ['var(--font-roboto)'],
         code: ['var(--font-source-code-pro)'],
         inter: ['var(--font-inter)'],
         'space-mono': ['var(--font-space-mono)'],
+        'space-grotesk': ['SpaceGrotesk-Regular', 'SpaceGrotesk-Medium', 'SpaceGrotesk-SemiBold', 'SpaceGrotesk-Bold'],
       },
       fontWeight: {
         extrablack: '950',

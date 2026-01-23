@@ -1,67 +1,70 @@
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import '@/global.css';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from '@react-navigation/native';
+import { Slot, useRouter, useSegments, usePathname } from 'expo-router';
+import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
-import { useColorScheme } from '@/components/useColorScheme';
-import { Slot, usePathname } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { Fab, FabIcon } from '@/components/ui/fab';
-import { MoonIcon, SunIcon } from '@/components/ui/icon';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-SplashScreen.preventAutoHideAsync();
+import { Text } from 'react-native';
+import { useAuth } from '@/lib/useAuth';
+import { getRoleBasedRedirect } from '@/lib/routeGuards';
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
+  const [fontsLoaded] = useFonts({
+    'SpaceGrotesk-Regular': require('../assets/fonts/SpaceGrotesk-Regular.ttf'),
+    'SpaceGrotesk-Medium': require('../assets/fonts/SpaceGrotesk-Medium.ttf'),
+    'SpaceGrotesk-SemiBold': require('../assets/fonts/SpaceGrotesk-SemiBold.ttf'),
+    'SpaceGrotesk-Bold': require('../assets/fonts/SpaceGrotesk-Bold.ttf'),
   });
 
-  const [styleLoaded, setStyleLoaded] = useState(false);
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
+  const { user, userData, loading } = useAuth();
+  const segments = useSegments();
   const pathname = usePathname();
-  const [colorMode, setColorMode] = useState<'light' | 'dark'>('light');
+  const router = useRouter();
+
+
+
+  useEffect(() => {
+    console.log('Auth guard running:', { user: user?.email, role: userData?.role, loading, pathname });
+    
+    if (loading) return;
+
+    const inAuthGroup = pathname.startsWith('/(auth)') || pathname === '/login' || pathname === '/register' || pathname === '/parent-link';
+    const inAdminGroup = pathname.startsWith('/admin');
+    const inTabsGroup = pathname.startsWith('/(tabs)');
+
+    if (!user) {
+      // Redirect unauthenticated users to login if not already in auth
+      if (!inAuthGroup) {
+        console.log('Redirecting to login');
+        router.replace('/(auth)/login' as any);
+      }
+      return;
+    }
+
+    const role = userData?.role;
+    console.log('User role:', role, 'inAuthGroup:', inAuthGroup);
+
+    // Role-based redirects
+    if (inAuthGroup && role) {
+      // Authenticated users shouldn't be in auth pages
+      const redirectPath = getRoleBasedRedirect(role, true);
+      console.log('Redirecting from auth to:', redirectPath);
+      router.replace(redirectPath as any);
+      return;
+    }
+
+    if (inAdminGroup && role !== 'admin') {
+      router.replace('/unauthorized' as any);
+      return;
+    }
+  }, [user, userData, loading, pathname, router]);
+
+  if (loading) {
+    return null; // Show loading screen if needed
+  }
 
   return (
-    <GluestackUIProvider mode={colorMode}>
-      <ThemeProvider value={colorMode === 'dark' ? DarkTheme : DefaultTheme}>
-        <Slot />
-        {pathname === '/' && (
-          <Fab
-            onPress={() =>
-              setColorMode(colorMode === 'dark' ? 'light' : 'dark')
-            }
-            className="m-6"
-            size="lg"
-          >
-            <FabIcon as={colorMode === 'dark' ? MoonIcon : SunIcon} />
-          </Fab>
-        )}
-      </ThemeProvider>
+    <GluestackUIProvider mode="light">
+      <Slot />
     </GluestackUIProvider>
   );
 }
