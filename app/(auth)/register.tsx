@@ -1,233 +1,146 @@
-import React, { useState } from 'react'
-import {
-  View,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  TouchableOpacity,
-} from 'react-native'
-import { useRouter } from 'expo-router'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
-import { inferUserDetails } from '@/lib/roleUtils';
-import { UserData } from '@/lib/authUtils';
+import React from 'react';
+import { Link, router } from 'expo-router';
+import { ArrowLeft, GraduationCap, UserCog, Users, Shield } from 'lucide-react-native';
 
 /* Gluestack UI (local re-exports) */
-import { Text } from '@/components/ui/text'
-import { Input, InputField, InputSlot, InputIcon } from '@/components/ui/input'
-import { Button, ButtonText } from '@/components/ui/button'
-import { VStack } from '@/components/ui/vstack'
-import { MailIcon, EyeIcon, EyeOffIcon, LockIcon, SettingsIcon } from '@/components/ui/icon'
 
+// Layout
+import { VStack } from '@/components/ui/vstack'
+import { HStack } from '@/components/ui/hstack'
+import { Box } from '@/components/ui/box'
+
+// Typography
+import { Text } from '@/components/ui/text'
+import { Heading } from '@/components/ui/heading'
+
+// Button
+import { Button, ButtonText } from '@/components/ui/button'
+
+
+type RoleRoute =
+  | '/(auth)/register-student'
+  | '/(auth)/register-teacher'
+  | '/(auth)/register-parent'
+  | '/(auth)/register-admin';
+
+interface RoleCard {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  textColor: string;
+  iconColor: string;
+  href: RoleRoute;
+}
 
 export default function RegisterScreen() {
-  // --------------------------------------------------
-  // State
-  // --------------------------------------------------
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const roles: RoleCard[] = [
+    {
+      id: 'student',
+      title: 'Student',
+      description: 'Access timetable, marks, attendance, and course materials',
+      icon: GraduationCap,
+      color: 'bg-blue-100 border-blue-200',
+      textColor: 'text-blue-700',
+      iconColor: '#3B82F6',
+      href: '/(auth)/register-student',
+    },
+    {
+      id: 'teacher',
+      title: 'Teacher',
+      description: 'Manage courses, take attendance, upload materials, and grade assignments',
+      icon: Shield,
+      color: 'bg-green-100 border-green-200',
+      textColor: 'text-green-700',
+      iconColor: '#10B981',
+      href: '/(auth)/register-teacher',
+    },
+    {
+      id: 'parent',
+      title: 'Parent',
+      description: 'Monitor your child\'s academic progress and receive updates',
+      icon: Users,
+      color: 'bg-purple-100 border-purple-200',
+      textColor: 'text-purple-700',
+      iconColor: '#8B5CF6',
+      href: '/(auth)/register-parent',
+    },
+    {
+      id: 'admin',
+      title: 'Admin',
+      description: 'Manage system, users, courses, and academic structure',
+      icon: Shield,
+      color: 'bg-orange-100 border-orange-200',
+      textColor: 'text-orange-700',
+      iconColor: '#F97316',
+      href: '/(auth)/register-admin',
+    },
+  ];
 
-  const router = useRouter()
-
-  // Password visibility handlers
-  const handlePasswordVisibility = () => {
-    setShowPassword((prevState) => !prevState)
-  }
-
-  const handleConfirmPasswordVisibility = () => {
-    setShowConfirmPassword((prevState) => !prevState)
-  }
-
-  // --------------------------------------------------
-  // Register Handler (KEEP YOUR EXISTING LOGIC HERE)
-  // --------------------------------------------------
-  const handleRegister = async () => {
-    if (!name.trim()) {
-      Alert.alert('Name Required', 'Please enter your full name.')
-      return
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      
-      const userDetails = inferUserDetails(email)
-      
-      if (!userDetails) {
-        Alert.alert('Invalid Email', 'Please check your email format.')
-        return
-      }
-
-      const userData: UserData = {
-        uid: userCredential.user.uid,
-        profileComplete: userDetails.role === 'parent' ? false : true,
-        role: userDetails.role,
-        name: name.trim(),
-        email,
-        createdAt: serverTimestamp(),
-        ...(userDetails.batch && { batch: userDetails.batch }),
-        ...(userDetails.dept && { dept: userDetails.dept }),
-        ...(userDetails.usn && { usn: userDetails.usn }),
-      }
-
-      await setDoc(doc(db, 'users', userCredential.user.uid), userData)
-
-      // Redirect will be handled by _layout.tsx
-    } catch (error: any) {
-      Alert.alert(
-        'Registration Failed',
-        error?.message ?? 'An error occurred during registration.'
-      )
-      console.log(error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  const handleRolePress = (href: RoleRoute) => {
+    router.push(href);
+  };
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-[#D1E7EF]"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {/* --------------------------------------------------
-          Illustration Section
-      --------------------------------------------------- */}
-      <View className="items-center pt-24 pb-0">
-        <Image
-          source={require('@/assets/images/login1.png')}
-          className="w-112 h-80"
-          resizeMode="contain"
-        />
-      </View>
+    <Box className="flex-1 px-6">
+      <VStack className="flex-1" space="lg">
+        {/* Header with Back Button */}
+        <HStack className="items-center pt-4">
+          <Link href="/(auth)/login" asChild>
+            <Button variant="link" size="sm">
+              <ArrowLeft size={20} color="#6B7280" />
+            </Button>
+          </Link>
+          <Heading size="xl" className="flex-1 text-center text-gray-900">
+            Create Account
+          </Heading>
+          <Box className="w-10" />
+          {/* Spacer for balance */}
+        </HStack>
 
-      {/* --------------------------------------------------
-          Register Card
-      --------------------------------------------------- */}
-      <View className="flex-1 bg-[#1C1C1E] rounded-t-3xl px-6 pt-12">
-        <VStack space="lg" className="flex-1">
-          {/* Header */}
-          <View>
-            <Text className="text-4xl font-semibold text-white">
-              Create Account
-            </Text>
-            <Text className="text-[#C5D4CA] text-sm mt-1 pb-8">
-              Use your college email if you are a student or teacher.
-              Parents may use any email address.
-            </Text>
-          </View>
+        <Text className="text-center text-gray-600 mb-2">
+          Select your role to continue registration
+        </Text>
 
-          {/* Name Input */}
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputField
-              value={name}
-              onChangeText={setName}
-              placeholder="Full Name"
-              placeholderTextColor="#C5D4CA"
-              className="text-white pl-4"
-            />
-          </Input>
-
-          {/* Email Input */}
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputSlot className='pl-4'>
-              <InputIcon as={MailIcon} />
-            </InputSlot>
-            <InputField
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor="#C5D4CA"
-              className="text-white"
-            />
-          </Input>
-
-          {/* Password Input */}
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputSlot className='pl-4'>
-              <InputIcon as={LockIcon} />
-            </InputSlot>
-            <InputField
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              placeholderTextColor="#C5D4CA"
-              className="text-white"
-              type={showPassword ? 'text' : 'password'}
-            />
-            <InputSlot className="pr-3" onPress={handlePasswordVisibility}>
-              <InputIcon as={showPassword ? EyeIcon : EyeOffIcon} />
-            </InputSlot>
-          </Input>
-
-          {/* Confirm Password Input */}
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputSlot className='pl-4'>
-              <InputIcon as={LockIcon} />
-            </InputSlot>
-            <InputField
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Confirm Password"
-              placeholderTextColor="#C5D4CA"
-              className="text-white"
-              type={showConfirmPassword ? 'text' : 'password'}
-            />
-            <InputSlot className="pr-3" onPress={handleConfirmPasswordVisibility}>
-              <InputIcon as={showConfirmPassword ? EyeIcon : EyeOffIcon} />
-            </InputSlot>
-          </Input>
-
-          {/* Register Button */}
-          <Button
-            onPress={handleRegister}
-            disabled={loading}
-            className="bg-[#C5D4CA] ded-md disabled:opacity-60"
-            size='xl'
-          >
-            <ButtonText className="text-black font-semibold text-xl">
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </ButtonText>
-          </Button>
-
-          {/* Login Link */}
-          <View className="mt-4">
-            <Text className="text-center text-[#C5D4CA] text-sm">
-              Already have an account?{' '}
-              <TouchableOpacity onPress={() => router.push('/login')}>
-                <Text className="text-[#F9CD61] font-semibold">
-                  Sign In
-                </Text>
-              </TouchableOpacity>
-            </Text>
-          </View>
-
-          {/* Spacer */}
-          <View className="flex-1" />
-
-          {/* Footer */}
-          <View className="pb-6">
-            <Text className="text-center text-xs text-[#C5D4CA]">
-              By continuing, you agree to our Terms & Privacy Policy
-            </Text>
-          </View>
+        {/* Role Cards Grid */}
+        <VStack space="md" className="flex-1">
+          {roles.map((role) => {
+            const Icon = role.icon;
+            return (
+              <Link key={role.id} href={role.href} asChild>
+                <Button
+                  variant="outline"
+                  className={`${role.color} border-2 h-auto py-5 active:opacity-90`}
+                >
+                  <HStack className="items-center w-full" space="md">
+                    <Box className={`p-3 rounded-lg ${role.color.replace('100', '200')}`}>
+                      <Icon size={24} color={role.iconColor} />
+                    </Box>
+                    <VStack className="flex-1 items-start" space="xs">
+                      <Text className={`font-bold text-lg ${role.textColor}`}>
+                        {role.title}
+                      </Text>
+                      <Text className="text-gray-600 text-sm text-left">
+                        {role.description}
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </Button>
+              </Link>
+            );
+          })}
         </VStack>
-      </View>
-    </KeyboardAvoidingView>
-  )
+
+        {/* Login Link */}
+        <HStack className="justify-center py-6">
+          <Text className="text-gray-600">Already have an account? </Text>
+          <Link href="/(auth)/login" asChild>
+            <Button variant="link" size="sm">
+              <ButtonText className="text-blue-500">Sign In</ButtonText>
+            </Button>
+          </Link>
+        </HStack>
+      </VStack>
+    </Box>
+  );
 }

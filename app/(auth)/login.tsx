@@ -1,189 +1,237 @@
-import { useState } from 'react'
-import {
-  View,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-} from 'react-native'
-import { useRouter } from 'expo-router'
+import React, { useState } from 'react';
+import { Link, router } from 'expo-router';
+import { AlertCircle, Mail, Lock } from 'lucide-react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { Alert } from 'react-native';
+import { useAuth } from '@/hooks/useAuth';
 
 /* Gluestack UI (local re-exports) */
-import { Text } from '@/components/ui/text'
-import { Input, InputField, InputSlot, InputIcon } from '@/components/ui/input'
-import { Button, ButtonText } from '@/components/ui/button'
+
+// Layout
 import { VStack } from '@/components/ui/vstack'
-import { TouchableOpacity } from 'react-native'
-import { MailIcon, EyeIcon, EyeOffIcon, LockIcon } from '@/components/ui/icon'
+import { HStack } from '@/components/ui/hstack'
+import { Box } from '@/components/ui/box'
+
+// Typography
+import { Text } from '@/components/ui/text'
+import { Heading } from '@/components/ui/heading'
+
+// Button
+import { Button, ButtonText } from '@/components/ui/button'
+
+// Input
+import { Input, InputField } from '@/components/ui/input'
+
+// Form Control
+import {
+  FormControl,
+  FormControlLabel,
+  FormControlLabelText,
+} from '@/components/ui/form-control'
+
 
 export default function LoginScreen() {
-  // --------------------------------------------------
-  // State
-  // --------------------------------------------------
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false);
-  const handlePassState = () => {
-    setShowPassword((showState) => {
-      return !showState;
-    });
-  };
-  const router = useRouter()
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  // --------------------------------------------------
-  // Login Handler (KEEP YOUR EXISTING LOGIC HERE)
-  // --------------------------------------------------
+  const validate = () => {
+    const newErrors: { email?: string; password?: string } = {};
+
+    if (!email) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email is invalid';
+
+    if (!password) newErrors.password = 'Password is required';
+    else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleLogin = async () => {
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      return;
-    }
+    if (!validate()) return;
 
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Fetch user document to get role and profile status
-      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-      
-      if (!userDoc.exists()) {
-        await auth.signOut();
-        Alert.alert('Login Failed', 'User record not found. Contact admin.');
-        return;
+      await signInWithEmailAndPassword(auth, email, password);
+      // Update Redirect Logic in Auth Pages
+      router.replace('/');
+    } catch (error: any) {
+      let message = 'Login failed. Please check your credentials.';
+
+      switch (error.code) {
+        case 'auth/user-not-found':
+          message = 'No account found with this email.';
+          break;
+        case 'auth/wrong-password':
+          message = 'Incorrect password.';
+          break;
+        case 'auth/invalid-email':
+          message = 'Invalid email address.';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Too many attempts. Please try again later.';
+          break;
+        case 'auth/user-disabled':
+          message = 'Account disabled. Please contact admin.';
+          break;
       }
 
-      const userData = userDoc.data();
-      
-      // Redirect based on role and profile completion
-      if (userData.role === 'parent' && (!userData.linkedStudents || userData.linkedStudents.length === 0)) {
-        router.replace('/parent-link');
-      } else if (!userData.profileComplete) {
-        router.replace('/complete-profile');
-      } else {
-        // Will be handled by _layout.tsx based on role
-      }
-    } catch (error: any) {
-      Alert.alert('Login Failed', error?.message || 'Invalid credentials.');
-      console.log(error);
+      Alert.alert('Login Error', message);
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-[#D1E7EF]"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {/* --------------------------------------------------
-          Illustration Section
-      --------------------------------------------------- */}
-      <View className="items-center pt-24 pb-0">
-        <Image
-          source={require('@/assets/images/login1.png')}
-          className="w-112 h-80"
-          resizeMode="contain"
-        />
-      </View>
+    <Box className="flex-1 px-6">
+      <VStack className="flex-1 justify-center" space="lg">
+        {/* Header */}
+        <VStack space="sm">
+          <Heading size="2xl" className="text-gray-900">
+            Welcome Back
+          </Heading>
+          <Text className="text-gray-600">
+            Sign in to access your academic dashboard
+          </Text>
+        </VStack>
 
-      {/* --------------------------------------------------
-          Login Card
-      --------------------------------------------------- */}
-      <View className="flex-1 bg-[#1C1C1E] rounded-t-3xl px-6 pt-12">
-        <VStack space="lg" className="flex-1">
-          {/* Header */}
-          <View>
-            <Text className="text-4xl font-semibold text-white">
-              Welcome back
-            </Text>
-            <Text className="text-[#C5D4CA] text-sm mt-1 pb-8">
-              Sign in using your registered email address
-            </Text>
-          </View>
-
+        {/* Form */}
+        <VStack space="md">
           {/* Email Input */}
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputSlot className='pl-4'>
-              <InputIcon as={MailIcon} />
-            </InputSlot>
-
-            <InputField
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor="#C5D4CA"
-              className="text-white"
-            />
-          </Input>
+          <FormControl isInvalid={!!errors.email}>
+            <FormControlLabel>
+              <FormControlLabelText className="text-gray-700">
+                College Email
+              </FormControlLabelText>
+            </FormControlLabel>
+            <Input>
+              <Box className="mr-3">
+                <Mail size={20} color="#6B7280" />
+              </Box>
+              <InputField
+                placeholder="you@college.edu"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+                className="flex-1"
+              />
+            </Input>
+            {errors.email && (
+              <HStack className="mt-1 items-center" space="xs">
+                <AlertCircle size={14} color="#EF4444" />
+                <Text className="text-red-500 text-sm">{errors.email}</Text>
+              </HStack>
+            )}
+          </FormControl>
 
           {/* Password Input */}
+          <FormControl isInvalid={!!errors.password}>
+            <FormControlLabel>
+              <FormControlLabelText className="text-gray-700">
+                Password
+              </FormControlLabelText>
+            </FormControlLabel>
+            <Input>
+              <Box className="mr-3">
+                <Lock size={20} color="#6B7280" />
+              </Box>
+              <InputField
+                placeholder="••••••••"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                className="flex-1"
+              />
+            </Input>
+            {errors.password && (
+              <HStack className="mt-1 items-center" space="xs">
+                <AlertCircle size={14} color="#EF4444" />
+                <Text className="text-red-500 text-sm">{errors.password}</Text>
+              </HStack>
+            )}
+          </FormControl>
 
-          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
-            <InputSlot className='pl-4'>
-              <InputIcon as={LockIcon} />
-            </InputSlot>
-            <InputField
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              placeholderTextColor="#C5D4CA"
-              className="text-white"
-              type={showPassword ? 'text' : 'password'}
-            />
-            <InputSlot className="pr-3" onPress={handlePassState}>
-              <InputIcon as={showPassword ? EyeIcon : EyeOffIcon} />
-            </InputSlot>
-          </Input>
+          {/* Forgot Password Link */}
+          <Box className="items-end">
+            <Link href="/(auth)/forgot-password" asChild>
+              <Button variant="link" size="sm">
+                <ButtonText className="text-blue-500">
+                  Forgot Password?
+                </ButtonText>
+              </Button>
+            </Link>
+          </Box>
 
           {/* Login Button */}
           <Button
+            size="lg"
             onPress={handleLogin}
-            disabled={loading}
-            className="bg-[#C5D4CA] ded-md disabled:opacity-60"
-            size='xl'
+            isDisabled={loading}
+            className="mt-2 bg-blue-500 active:bg-blue-600"
           >
-            <ButtonText className="text-black font-semibold text-xl">
-              {loading ? 'Signing in...' : 'Login'}
+            <ButtonText className="text-white font-semibold">
+              {loading ? 'Signing in...' : 'Sign In'}
             </ButtonText>
           </Button>
-
-          {/* Register Link */}
-          <View className="mt-4">
-            <Text className="text-center text-[#C5D4CA] text-sm">
-              Don’t have an account?{' '}
-               <TouchableOpacity onPress={() => router.push('/register')}>
-                 <Text
-                   className="text-[#F9CD61] font-semibold"
-                   onPress={() => router.push('/register')}
-                 >
-                   Register
-                 </Text>
-               </TouchableOpacity>
-            </Text>
-          </View>
-
-          {/* Spacer */}
-          <View className="flex-1" />
-
-          {/* Footer */}
-          <View className="pb-6">
-            <Text className="text-center text-xs text-[#C5D4CA]">
-              By continuing, you agree to our Terms & Privacy Policy
-            </Text>
-          </View>
         </VStack>
-      </View>
-    </KeyboardAvoidingView>
-  )
-}
 
+        {/* Divider */}
+        <HStack className="items-center my-4">
+          <Box className="flex-1 h-px bg-gray-200" />
+          <Text className="mx-4 text-gray-500">or</Text>
+          <Box className="flex-1 h-px bg-gray-200" />
+        </HStack>
+
+        {/* Register Links */}
+        <VStack space="sm">
+          <Text className="text-center text-gray-600">
+            Don't have an account?
+          </Text>
+
+          <Link href="/(auth)/register" asChild>
+            <Button variant="outline" size="lg">
+              <ButtonText className="text-gray-700">
+                Create Account
+              </ButtonText>
+            </Button>
+          </Link>
+
+          <HStack className="justify-center mt-4" space="sm">
+            <Link href="/(auth)/register-student" asChild>
+              <Button variant="link" size="sm">
+                <ButtonText className="text-blue-500">
+                  Student
+                </ButtonText>
+              </Button>
+            </Link>
+            <Text className="text-gray-500">•</Text>
+            <Link href="/(auth)/register-teacher" asChild>
+              <Button variant="link" size="sm">
+                <ButtonText className="text-green-500">
+                  Teacher
+                </ButtonText>
+              </Button>
+            </Link>
+            <Text className="text-gray-500">•</Text>
+            <Link href="/(auth)/register-parent" asChild>
+              <Button variant="link" size="sm">
+                <ButtonText className="text-purple-500">
+                  Parent
+                </ButtonText>
+              </Button>
+            </Link>
+          </HStack>
+        </VStack>
+
+        {/* Footer Note */}
+        <Text className="text-center text-gray-500 text-sm mt-8">
+          By signing in, you agree to our Terms and Privacy Policy
+        </Text>
+      </VStack>
+    </Box>
+  );
+}

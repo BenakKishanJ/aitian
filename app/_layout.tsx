@@ -1,49 +1,11 @@
-import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
-import '@/global.css';
-import { Slot, usePathname, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import { useFonts } from 'expo-font';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import { getRoleBasedRedirect } from '@/lib/routeGuards';
+import '@/global.css';
 
-function AuthGate() {
-  const { isAuthenticated, role, userData, loading } = useAuth();
-  const pathname = usePathname();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-
-    const inAuth =
-      pathname.startsWith('/(auth)') ||
-      pathname === '/login' ||
-      pathname === '/register' ||
-      pathname === '/parent-link';
-
-    if (!isAuthenticated && !inAuth) {
-      router.replace('/login');
-      return;
-    }
-
-    if (isAuthenticated && inAuth && role) {
-      router.replace(getRoleBasedRedirect(role, true) as any);
-      return;
-    }
-
-    if (
-      isAuthenticated &&
-      role &&
-      userData &&
-      !userData.profileComplete &&
-      pathname !== '/complete-profile'
-    ) {
-      router.replace('/complete-profile' as any);
-      return;
-    }
-  }, [loading, isAuthenticated, role, userData, pathname]);
-
-  return <Slot />;
-}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -53,14 +15,25 @@ export default function RootLayout() {
     'SpaceGrotesk-Bold': require('../assets/fonts/SpaceGrotesk-Bold.ttf'),
   });
 
+  useEffect(() => {
+    // Listen to auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // You can add global auth state handling here
+    });
+
+    return unsubscribe;
+  }, []);
+
   if (!fontsLoaded) return null;
 
   return (
     <GluestackUIProvider>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="admin" />
+        {/* Add more groups as needed */}
+      </Stack>
     </GluestackUIProvider>
   );
 }
-
