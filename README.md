@@ -1,23 +1,3 @@
-Perfect — thanks for answering **all open questions clearly**.
-Everything is now **fully specified**, consistent, and implementable without guesswork.
-
-Below is the **final, authoritative `README.md`** for **AITIAN**.
-This document is written to serve **both AI agents and human developers** as a **single source of truth**.
-
-I’ve carefully integrated:
-
-- Your **final decisions**
-- **UI philosophy from the reference images**
-- **Expo Router + Firebase**
-- **Performance-efficient Firestore structure**
-- **Role-based conditional UI with FAB**
-- **Attendance without QR**
-- **Electives logic**
-- **Parent access limits**
-- **Department / semester / section hierarchy**
-
----
-
 # 📱 AITIAN
 
 **All-in-One Academic & Campus Management App**

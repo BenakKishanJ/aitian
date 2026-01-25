@@ -9,22 +9,24 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { isValidOrgEmail, inferUserDetails, UserData } from '@/lib/authUtils';
+import { inferUserDetails } from '@/lib/roleUtils';
+import { UserData } from '@/lib/authUtils';
 
 /* Gluestack UI (local re-exports) */
 import { Text } from '@/components/ui/text'
 import { Input, InputField, InputSlot, InputIcon } from '@/components/ui/input'
 import { Button, ButtonText } from '@/components/ui/button'
 import { VStack } from '@/components/ui/vstack'
-import { MailIcon, EyeIcon, EyeOffIcon, LockIcon } from '@/components/ui/icon'
+import { MailIcon, EyeIcon, EyeOffIcon, LockIcon, SettingsIcon } from '@/components/ui/icon'
 
 
 export default function RegisterScreen() {
   // --------------------------------------------------
   // State
   // --------------------------------------------------
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -47,34 +49,42 @@ export default function RegisterScreen() {
   // Register Handler (KEEP YOUR EXISTING LOGIC HERE)
   // --------------------------------------------------
   const handleRegister = async () => {
-    if (!isValidOrgEmail(email)) {
-      Alert.alert('Invalid Email', 'Only organizational emails are allowed.')
+    if (!name.trim()) {
+      Alert.alert('Name Required', 'Please enter your full name.')
       return
     }
 
-    const userDetails = inferUserDetails(email)
-    if (!userDetails) {
-      Alert.alert('Invalid Email Format', 'Please check your email format.')
-      return
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Password Mismatch', 'Passwords do not match.')
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.')
       return
     }
 
     setLoading(true)
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      const uid = userCredential.user.uid
-
-      const userData: UserData = {
-        ...userDetails,
-        email,
-        createdAt: new Date(),
+      
+      const userDetails = inferUserDetails(email)
+      
+      if (!userDetails) {
+        Alert.alert('Invalid Email', 'Please check your email format.')
+        return
       }
 
-      await setDoc(doc(db, 'users', uid), userData)
+      const userData: UserData = {
+        uid: userCredential.user.uid,
+        profileComplete: userDetails.role === 'parent' ? false : true,
+        role: userDetails.role,
+        name: name.trim(),
+        email,
+        createdAt: serverTimestamp(),
+        ...(userDetails.batch && { batch: userDetails.batch }),
+        ...(userDetails.dept && { dept: userDetails.dept }),
+        ...(userDetails.usn && { usn: userDetails.usn }),
+      }
+
+      await setDoc(doc(db, 'users', userCredential.user.uid), userData)
 
       // Redirect will be handled by _layout.tsx
     } catch (error: any) {
@@ -115,9 +125,21 @@ export default function RegisterScreen() {
               Create Account
             </Text>
             <Text className="text-[#C5D4CA] text-sm mt-1 pb-8">
-              Join AITIAN with your organizational email
+              Use your college email if you are a student or teacher.
+              Parents may use any email address.
             </Text>
           </View>
+
+          {/* Name Input */}
+          <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>
+            <InputField
+              value={name}
+              onChangeText={setName}
+              placeholder="Full Name"
+              placeholderTextColor="#C5D4CA"
+              className="text-white pl-4"
+            />
+          </Input>
 
           {/* Email Input */}
           <Input className="bg-[#2A2A2D] rounded-md border-0" size='xl'>

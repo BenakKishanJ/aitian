@@ -8,8 +8,8 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { isValidOrgEmail, inferUserDetails } from '@/lib/authUtils';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 
 /* Gluestack UI (local re-exports) */
 import { Text } from '@/components/ui/text'
@@ -39,17 +39,38 @@ export default function LoginScreen() {
   // --------------------------------------------------
 
   const handleLogin = async () => {
-    if (!isValidOrgEmail(email)) {
-      Alert.alert('Invalid Email', 'Only organizational emails are allowed.');
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
       return;
     }
 
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Redirect will be handled by _layout.tsx
-    } catch (error) {
-      Alert.alert('Login Failed', 'Invalid credentials.');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Fetch user document to get role and profile status
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      
+      if (!userDoc.exists()) {
+        await auth.signOut();
+        Alert.alert('Login Failed', 'User record not found. Contact admin.');
+        return;
+      }
+
+      const userData = userDoc.data();
+      
+      // Redirect based on role and profile completion
+      if (userData.role === 'parent' && (!userData.linkedStudents || userData.linkedStudents.length === 0)) {
+        router.replace('/parent-link');
+      } else if (!userData.profileComplete) {
+        router.replace('/complete-profile');
+      } else {
+        // Will be handled by _layout.tsx based on role
+      }
+    } catch (error: any) {
+      Alert.alert('Login Failed', error?.message || 'Invalid credentials.');
       console.log(error);
     } finally {
       setLoading(false);
@@ -84,7 +105,7 @@ export default function LoginScreen() {
               Welcome back
             </Text>
             <Text className="text-[#C5D4CA] text-sm mt-1 pb-8">
-              Sign in to continue
+              Sign in using your registered email address
             </Text>
           </View>
 

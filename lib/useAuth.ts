@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserData, Role } from './authUtils';
@@ -8,6 +8,11 @@ export interface AuthState {
   user: User | null;
   userData: UserData | null;
   loading: boolean;
+}
+
+export async function logout() {
+  const { auth } = await import('./firebase');
+  return await signOut(auth);
 }
 
 export function useAuth(): AuthState {

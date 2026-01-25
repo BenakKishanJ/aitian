@@ -1,14 +1,18 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
 
 export type Role = "student" | "teacher" | "parent" | "admin";
 
 export interface UserData {
-  email: string;
+  uid: string;
   role: Role;
+  profileComplete: boolean;
+  linkedStudentId?: string;
+  email: string;
+  name: string;
   batch?: string;
   dept?: string;
   usn?: string;
-  createdAt: Date;
+  createdAt: Date | Timestamp | any;
 }
 
 /**
@@ -31,6 +35,9 @@ export function inferUserDetails(email: string): Omit<UserData, 'email' | 'creat
   if (studentMatch) {
     const [, , , batch, dept, usn] = studentMatch;
     return {
+      uid: '', // Will be filled during registration
+      profileComplete: false, // Will be updated after profile completion
+      name: '', // Will be filled during registration
       role: 'student',
       batch: '20' + batch,
       dept: dept.toUpperCase(),
@@ -43,6 +50,9 @@ export function inferUserDetails(email: string): Omit<UserData, 'email' | 'creat
   if (teacherMatch) {
     const [, , dept] = teacherMatch;
     return {
+      uid: '', // Will be filled during registration
+      profileComplete: false, // Will be updated after profile completion
+      name: '', // Will be filled during registration
       role: 'teacher',
       dept: dept.toUpperCase(),
     };

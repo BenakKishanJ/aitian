@@ -1,11 +1,49 @@
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import '@/global.css';
-import { Slot, useRouter, useSegments, usePathname } from 'expo-router';
+import { Slot, usePathname, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
-import { Text } from 'react-native';
-import { useAuth } from '@/lib/useAuth';
+import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { getRoleBasedRedirect } from '@/lib/routeGuards';
+
+function AuthGate() {
+  const { isAuthenticated, role, userData, loading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuth =
+      pathname.startsWith('/(auth)') ||
+      pathname === '/login' ||
+      pathname === '/register' ||
+      pathname === '/parent-link';
+
+    if (!isAuthenticated && !inAuth) {
+      router.replace('/login');
+      return;
+    }
+
+    if (isAuthenticated && inAuth && role) {
+      router.replace(getRoleBasedRedirect(role, true) as any);
+      return;
+    }
+
+    if (
+      isAuthenticated &&
+      role &&
+      userData &&
+      !userData.profileComplete &&
+      pathname !== '/complete-profile'
+    ) {
+      router.replace('/complete-profile' as any);
+      return;
+    }
+  }, [loading, isAuthenticated, role, userData, pathname]);
+
+  return <Slot />;
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -15,56 +53,14 @@ export default function RootLayout() {
     'SpaceGrotesk-Bold': require('../assets/fonts/SpaceGrotesk-Bold.ttf'),
   });
 
-  const { user, userData, loading } = useAuth();
-  const segments = useSegments();
-  const pathname = usePathname();
-  const router = useRouter();
-
-
-
-  useEffect(() => {
-    console.log('Auth guard running:', { user: user?.email, role: userData?.role, loading, pathname });
-    
-    if (loading) return;
-
-    const inAuthGroup = pathname.startsWith('/(auth)') || pathname === '/login' || pathname === '/register' || pathname === '/parent-link';
-    const inAdminGroup = pathname.startsWith('/admin');
-    const inTabsGroup = pathname.startsWith('/(tabs)');
-
-    if (!user) {
-      // Redirect unauthenticated users to login if not already in auth
-      if (!inAuthGroup) {
-        console.log('Redirecting to login');
-        router.replace('/(auth)/login' as any);
-      }
-      return;
-    }
-
-    const role = userData?.role;
-    console.log('User role:', role, 'inAuthGroup:', inAuthGroup);
-
-    // Role-based redirects
-    if (inAuthGroup && role) {
-      // Authenticated users shouldn't be in auth pages
-      const redirectPath = getRoleBasedRedirect(role, true);
-      console.log('Redirecting from auth to:', redirectPath);
-      router.replace(redirectPath as any);
-      return;
-    }
-
-    if (inAdminGroup && role !== 'admin') {
-      router.replace('/unauthorized' as any);
-      return;
-    }
-  }, [user, userData, loading, pathname, router]);
-
-  if (loading) {
-    return null; // Show loading screen if needed
-  }
+  if (!fontsLoaded) return null;
 
   return (
-    <GluestackUIProvider mode="light">
-      <Slot />
+    <GluestackUIProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </GluestackUIProvider>
   );
 }
+
