@@ -1,25 +1,18 @@
 import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/AuthContext";
 import { ActivityIndicator, View } from "react-native";
 
 export default function Index() {
   const { user, userData, role, loading } = useAuth();
   const router = useRouter();
-  const segments = useSegments();
 
   useEffect(() => {
     if (loading) return;
 
-    const inAuthGroup = segments[0] === "(auth)";
-    const inTabsGroup = segments[0] === "(tabs)";
-    const inAdminGroup = segments[0] === "admin";
-
     if (!user) {
       // Not authenticated - redirect to login
-      if (!inAuthGroup) {
-        router.replace("/(auth)/login");
-      }
+      router.replace("/(auth)/login");
     } else if (!user.emailVerified) {
       // Email not verified - redirect to verification page
       router.replace("/(auth)/verify-email");
@@ -30,17 +23,13 @@ export default function Index() {
       // Authenticated and verified
       if (role === "admin") {
         // Admin users go to admin dashboard
-        if (!inAdminGroup) {
-          router.replace("/admin");
-        }
+        router.replace("/admin");
       } else {
         // Regular users (student, teacher, parent) go to tabs
-        if (!inTabsGroup) {
-          router.replace("/(tabs)");
-        }
+        router.replace("/(tabs)/home");
       }
     }
-  }, [user, userData, role, loading, segments]);
+  }, [user, userData, role, loading]);
 
   // Show loading screen while checking auth
   return (
