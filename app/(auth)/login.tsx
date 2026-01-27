@@ -1,237 +1,334 @@
-import React, { useState } from 'react';
-import { Link, router } from 'expo-router';
-import { AlertCircle, Mail, Lock } from 'lucide-react-native';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { Alert } from 'react-native';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useState } from "react";
+import {
+  View,
+  Animated,
+  Alert,
+  TouchableOpacity,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import {
+  AlertCircle,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+} from "lucide-react-native";
 
-/* Gluestack UI (local re-exports) */
-
-// Layout
-import { VStack } from '@/components/ui/vstack'
-import { HStack } from '@/components/ui/hstack'
-import { Box } from '@/components/ui/box'
-
-// Typography
-import { Text } from '@/components/ui/text'
-import { Heading } from '@/components/ui/heading'
-
-// Button
-import { Button, ButtonText } from '@/components/ui/button'
-
-// Input
-import { Input, InputField } from '@/components/ui/input'
-
-// Form Control
+/* Gluestack UI components */
+import { Text } from "@/components/ui/text";
+import { Input, InputField, InputSlot } from "@/components/ui/input";
+import { Button, ButtonText } from "@/components/ui/button";
+import { VStack } from "@/components/ui/vstack";
+import { HStack } from "@/components/ui/hstack";
 import {
   FormControl,
   FormControlLabel,
   FormControlLabelText,
-} from '@/components/ui/form-control'
-
+} from "@/components/ui/form-control";
+import { Icon } from "@/components/ui/icon";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // --------------------------------------------------
+  // State
+  // --------------------------------------------------
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
+    {},
+  );
 
+  const router = useRouter();
+
+  // Scroll animation
+  const scrollY = new Animated.Value(0);
+  const HEADER_MAX_HEIGHT = 280;
+  const HEADER_MIN_HEIGHT = 80;
+  const COLLAPSE_RANGE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    extrapolate: "clamp",
+  });
+
+  const imageScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [1, 0.4],
+    extrapolate: "clamp",
+  });
+
+  // Validate form
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
 
-    if (!email) newErrors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email is invalid';
+    if (!email) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(email))
+      newErrors.email = "Please enter a valid email";
 
-    if (!password) newErrors.password = 'Password is required';
-    else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+    if (!password) newErrors.password = "Password is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // --------------------------------------------------
+  // Login Handler
+  // --------------------------------------------------
   const handleLogin = async () => {
     if (!validate()) return;
 
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Update Redirect Logic in Auth Pages
-      router.replace('/');
+      router.replace("/");
     } catch (error: any) {
-      let message = 'Login failed. Please check your credentials.';
+      let message = "Login failed. Please check your credentials.";
 
       switch (error.code) {
-        case 'auth/user-not-found':
-          message = 'No account found with this email.';
+        case "auth/user-not-found":
+          message = "No account found with this email.";
           break;
-        case 'auth/wrong-password':
-          message = 'Incorrect password.';
+        case "auth/wrong-password":
+          message = "Incorrect password.";
           break;
-        case 'auth/invalid-email':
-          message = 'Invalid email address.';
+        case "auth/invalid-email":
+          message = "Invalid email address.";
           break;
-        case 'auth/too-many-requests':
-          message = 'Too many attempts. Please try again later.';
+        case "auth/too-many-requests":
+          message = "Too many attempts. Please try again later.";
           break;
-        case 'auth/user-disabled':
-          message = 'Account disabled. Please contact admin.';
+        case "auth/user-disabled":
+          message = "Account disabled. Please contact admin.";
           break;
       }
 
-      Alert.alert('Login Error', message);
+      Alert.alert("Login Error", message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box className="flex-1 px-6">
-      <VStack className="flex-1 justify-center" space="lg">
-        {/* Header */}
-        <VStack space="sm">
-          <Heading size="2xl" className="text-gray-900">
-            Welcome Back
-          </Heading>
-          <Text className="text-gray-600">
-            Sign in to access your academic dashboard
-          </Text>
-        </VStack>
+    <View className="flex-1 bg-[#D1E7EF]">
+      <Animated.ScrollView
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false },
+        )}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        scrollsToTop={false}
+        overScrollMode="never"
+        contentContainerStyle={{
+          backgroundColor: "#D1E7EF",
+          flexGrow: 1,
+        }}
+      >
+        {/* --------------------------------------------------
+            Animated Header with Illustration
+        --------------------------------------------------- */}
+        <Animated.View
+          style={{
+            height: headerHeight,
+            backgroundColor: "#D1E7EF",
+            justifyContent: "center",
+            alignItems: "center",
+            overflow: "hidden",
+            minHeight: HEADER_MIN_HEIGHT,
+          }}
+        >
+          <Animated.Image
+            source={require("@/assets/images/login1.png")}
+            style={{
+              width: 320,
+              height: 240,
+              transform: [{ scale: imageScale }],
+            }}
+            resizeMode="contain"
+          />
+        </Animated.View>
 
-        {/* Form */}
-        <VStack space="md">
-          {/* Email Input */}
-          <FormControl isInvalid={!!errors.email}>
-            <FormControlLabel>
-              <FormControlLabelText className="text-gray-700">
-                College Email
-              </FormControlLabelText>
-            </FormControlLabel>
-            <Input>
-              <Box className="mr-3">
-                <Mail size={20} color="#6B7280" />
-              </Box>
-              <InputField
-                placeholder="you@college.edu"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-                className="flex-1"
-              />
-            </Input>
-            {errors.email && (
-              <HStack className="mt-1 items-center" space="xs">
-                <AlertCircle size={14} color="#EF4444" />
-                <Text className="text-red-500 text-sm">{errors.email}</Text>
-              </HStack>
-            )}
-          </FormControl>
+        {/* --------------------------------------------------
+            Login Card
+        --------------------------------------------------- */}
+        <View className="bg-[#1C1C1E] rounded-t-3xl px-6 pt-8 pb-8 flex-1">
+          <VStack space="lg">
+            {/* Header */}
+            <View>
+              <Text className="text-3xl font-bold text-white mb-1">
+                Welcome Back
+              </Text>
+              <Text className="text-[#C5D4CA] text-base mb-6">
+                Sign in to access your academic dashboard
+              </Text>
+            </View>
 
-          {/* Password Input */}
-          <FormControl isInvalid={!!errors.password}>
-            <FormControlLabel>
-              <FormControlLabelText className="text-gray-700">
-                Password
-              </FormControlLabelText>
-            </FormControlLabel>
-            <Input>
-              <Box className="mr-3">
-                <Lock size={20} color="#6B7280" />
-              </Box>
-              <InputField
-                placeholder="••••••••"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-                className="flex-1"
-              />
-            </Input>
-            {errors.password && (
-              <HStack className="mt-1 items-center" space="xs">
-                <AlertCircle size={14} color="#EF4444" />
-                <Text className="text-red-500 text-sm">{errors.password}</Text>
-              </HStack>
-            )}
-          </FormControl>
+            {/* Email Input */}
+            <FormControl isInvalid={!!errors.email}>
+              <FormControlLabel>
+                <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
+                  College Email
+                </FormControlLabelText>
+              </FormControlLabel>
+              <Input className="bg-[#2A2A2D] rounded-lg border-0" size="lg">
+                <InputSlot className="pl-3">
+                  <Icon as={Mail} size="sm" className="text-[#C5D4CA]" />
+                </InputSlot>
+                <InputField
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@college.edu"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholderTextColor="#6B7280"
+                  className="text-white"
+                />
+              </Input>
+              {errors.email && (
+                <HStack className="mt-1 items-center" space="xs">
+                  <Icon as={AlertCircle} size="sm" className="text-red-500" />
+                  <Text className="text-red-500 text-sm">{errors.email}</Text>
+                </HStack>
+              )}
+            </FormControl>
 
-          {/* Forgot Password Link */}
-          <Box className="items-end">
-            <Link href="/(auth)/forgot-password" asChild>
-              <Button variant="link" size="sm">
-                <ButtonText className="text-blue-500">
+            {/* Password Input */}
+            <FormControl isInvalid={!!errors.password}>
+              <FormControlLabel>
+                <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
+                  Password
+                </FormControlLabelText>
+              </FormControlLabel>
+              <Input className="bg-[#2A2A2D] rounded-lg border-0" size="lg">
+                <InputSlot className="pl-3">
+                  <Icon as={Lock} size="sm" className="text-[#C5D4CA]" />
+                </InputSlot>
+                <InputField
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor="#6B7280"
+                  className="text-white"
+                  type={showPassword ? "text" : "password"}
+                />
+                <InputSlot
+                  className="pr-3"
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Icon
+                    as={showPassword ? EyeOff : Eye}
+                    size="sm"
+                    className="text-[#C5D4CA]"
+                  />
+                </InputSlot>
+              </Input>
+              {errors.password && (
+                <HStack className="mt-1 items-center" space="xs">
+                  <Icon as={AlertCircle} size="sm" className="text-red-500" />
+                  <Text className="text-red-500 text-sm">
+                    {errors.password}
+                  </Text>
+                </HStack>
+              )}
+            </FormControl>
+
+            {/* Forgot Password Link */}
+            <View className="items-end mb-2">
+              <TouchableOpacity
+                onPress={() => router.push("/(auth)/forgot-password")}
+              >
+                <Text className="text-[#BCF3FF] text-sm font-medium">
                   Forgot Password?
-                </ButtonText>
-              </Button>
-            </Link>
-          </Box>
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Login Button */}
-          <Button
-            size="lg"
-            onPress={handleLogin}
-            isDisabled={loading}
-            className="mt-2 bg-blue-500 active:bg-blue-600"
-          >
-            <ButtonText className="text-white font-semibold">
-              {loading ? 'Signing in...' : 'Sign In'}
-            </ButtonText>
-          </Button>
-        </VStack>
-
-        {/* Divider */}
-        <HStack className="items-center my-4">
-          <Box className="flex-1 h-px bg-gray-200" />
-          <Text className="mx-4 text-gray-500">or</Text>
-          <Box className="flex-1 h-px bg-gray-200" />
-        </HStack>
-
-        {/* Register Links */}
-        <VStack space="sm">
-          <Text className="text-center text-gray-600">
-            Don't have an account?
-          </Text>
-
-          <Link href="/(auth)/register" asChild>
-            <Button variant="outline" size="lg">
-              <ButtonText className="text-gray-700">
-                Create Account
+            {/* Login Button */}
+            <Button
+              onPress={handleLogin}
+              disabled={loading}
+              className="bg-[#BCF3FF] rounded-lg disabled:opacity-60 mt-2"
+              size="lg"
+            >
+              <ButtonText className="text-black font-semibold text-lg">
+                {loading ? "Signing in..." : "Sign In"}
               </ButtonText>
+              <Icon as={ArrowRight} size="md" className="ml-2 text-black" />
             </Button>
-          </Link>
 
-          <HStack className="justify-center mt-4" space="sm">
-            <Link href="/(auth)/register-student" asChild>
-              <Button variant="link" size="sm">
-                <ButtonText className="text-blue-500">
-                  Student
-                </ButtonText>
-              </Button>
-            </Link>
-            <Text className="text-gray-500">•</Text>
-            <Link href="/(auth)/register-teacher" asChild>
-              <Button variant="link" size="sm">
-                <ButtonText className="text-green-500">
-                  Teacher
-                </ButtonText>
-              </Button>
-            </Link>
-            <Text className="text-gray-500">•</Text>
-            <Link href="/(auth)/register-parent" asChild>
-              <Button variant="link" size="sm">
-                <ButtonText className="text-purple-500">
-                  Parent
-                </ButtonText>
-              </Button>
-            </Link>
-          </HStack>
-        </VStack>
+            {/* Divider */}
+            <HStack className="items-center my-4">
+              <View className="flex-1 h-px bg-[#2A2A2D]" />
+              <Text className="mx-4 text-[#C5D4CA] text-sm">or</Text>
+              <View className="flex-1 h-px bg-[#2A2A2D]" />
+            </HStack>
 
-        {/* Footer Note */}
-        <Text className="text-center text-gray-500 text-sm mt-8">
-          By signing in, you agree to our Terms and Privacy Policy
-        </Text>
-      </VStack>
-    </Box>
+            {/* Register Links */}
+            <VStack space="sm">
+              <Text className="text-center text-[#C5D4CA]">
+                Don't have an account?
+              </Text>
+
+              <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+                <View className="border border-[#C5D4CA] rounded-lg py-3 items-center">
+                  <Text className="text-[#C5D4CA] font-medium">
+                    Create Account
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <HStack className="justify-center mt-3" space="md">
+                <TouchableOpacity
+                  onPress={() => router.push("/(auth)/register-student")}
+                >
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: "#BCF3FF" }}
+                  >
+                    Student
+                  </Text>
+                </TouchableOpacity>
+                <Text className="text-[#C5D4CA]">•</Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(auth)/register-teacher")}
+                >
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: "#F65F50" }}
+                  >
+                    Teacher
+                  </Text>
+                </TouchableOpacity>
+                <Text className="text-[#C5D4CA]">•</Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(auth)/register-parent")}
+                >
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: "#F9CD61" }}
+                  >
+                    Parent
+                  </Text>
+                </TouchableOpacity>
+              </HStack>
+            </VStack>
+
+            {/* Footer */}
+            <View className="mt-6 pb-6">
+              <Text className="text-center text-xs text-[#C5D4CA]">
+                By continuing, you agree to our Terms & Privacy Policy
+              </Text>
+            </View>
+          </VStack>
+        </View>
+      </Animated.ScrollView>
+    </View>
   );
 }

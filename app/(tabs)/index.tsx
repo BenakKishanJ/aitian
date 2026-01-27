@@ -1,14 +1,5 @@
-import { View, Text } from 'react-native';
-import { useAuth } from '@/hooks/useAuth';
+import { Redirect } from "expo-router";
 
-export default function HomeScreen() {
-  const { userData, role } = useAuth();
-
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Welcome, {userData?.name}!</Text>
-      <Text>Role: {role}</Text>
-      <Text>Home Screen Content Here</Text>
-    </View>
-  );
+export default function TabsIndex() {
+  return <Redirect href="/(tabs)/home" />;
 }

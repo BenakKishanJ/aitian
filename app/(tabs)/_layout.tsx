@@ -1,16 +1,16 @@
-import { Tabs } from 'expo-router';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import { Home, CalendarDays, BookOpen, Bell, User } from 'lucide-react-native';
+import { Tabs } from "expo-router";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { Home, CalendarDays, BookOpen, Bell, User } from "lucide-react-native";
 
 export default function TabsLayout() {
   return (
     <ProtectedRoute>
       <Tabs screenOptions={{ headerShown: false, tabBarShowLabel: false }}>
         <Tabs.Screen
-          name="index"
+          name="home"
           options={{
             tabBarIcon: ({ focused, color, size }) => (
-              <Home size={size} color={focused ? '#3B82F6' : color} />
+              <Home size={size} color={focused ? "#3B82F6" : color} />
             ),
           }}
         />
@@ -18,7 +18,7 @@ export default function TabsLayout() {
           name="calendar"
           options={{
             tabBarIcon: ({ focused, color, size }) => (
-              <CalendarDays size={size} color={focused ? '#3B82F6' : color} />
+              <CalendarDays size={size} color={focused ? "#3B82F6" : color} />
             ),
           }}
         />
@@ -26,7 +26,7 @@ export default function TabsLayout() {
           name="academics"
           options={{
             tabBarIcon: ({ focused, color, size }) => (
-              <BookOpen size={size} color={focused ? '#3B82F6' : color} />
+              <BookOpen size={size} color={focused ? "#3B82F6" : color} />
             ),
           }}
         />
@@ -34,7 +34,7 @@ export default function TabsLayout() {
           name="news"
           options={{
             tabBarIcon: ({ focused, color, size }) => (
-              <Bell size={size} color={focused ? '#3B82F6' : color} />
+              <Bell size={size} color={focused ? "#3B82F6" : color} />
             ),
           }}
         />
@@ -42,8 +42,14 @@ export default function TabsLayout() {
           name="profile"
           options={{
             tabBarIcon: ({ focused, color, size }) => (
-              <User size={size} color={focused ? '#3B82F6' : color} />
+              <User size={size} color={focused ? "#3B82F6" : color} />
             ),
+          }}
+        />
+        <Tabs.Screen
+          name="index"
+          options={{
+            href: null, // Hide from tab bar
           }}
         />
       </Tabs>

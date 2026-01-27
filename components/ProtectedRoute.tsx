@@ -1,36 +1,55 @@
-import { Redirect } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
-import { ActivityIndicator, View } from 'react-native';
-import { useEffect } from 'react';
+import { Redirect } from "expo-router";
+import { useAuth } from "@/lib/AuthContext";
+import { ActivityIndicator, View } from "react-native";
 
-export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { firebaseUser, userData, role, loading } = useAuth();
+export default function ProtectedRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { user, userData, role, loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#F5F5F5",
+        }}
+      >
+        <ActivityIndicator size="large" color="#3B82F6" />
       </View>
     );
   }
 
   // Not authenticated
-  if (!firebaseUser) {
+  if (!user) {
     return <Redirect href="/(auth)/login" />;
   }
 
   // Email not verified
-  if (!firebaseUser.emailVerified) {
+  if (!user.emailVerified) {
     return <Redirect href="/(auth)/verify-email" />;
   }
 
-  // Parent without approved links - show limited content
-  if (role === 'parent' && (!userData?.linkedStudentIds || userData.linkedStudentIds.length === 0)) {
-    // Still allow access but will filter content in components
+  // No user data - shouldn't happen but handle gracefully
+  if (!userData) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  // Admin users should use admin routes, not tabs
+  if (role === "admin") {
+    return <Redirect href="/admin" />;
+  }
+
+  // Parent without approved links - still allow access but filter content in components
+  if (role === "parent" && !userData.linkedStudentId) {
+    // Still allow access but will show limited content
     return <>{children}</>;
   }
 
-  // Role-based redirect handled by layout structure
-
+  // All checks passed - render protected content
   return <>{children}</>;
 }
