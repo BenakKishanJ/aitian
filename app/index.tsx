@@ -3,6 +3,9 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/AuthContext";
 import { ActivityIndicator, View } from "react-native";
 
+// TEST MODE: Set to true to bypass email verification during testing
+const TEST_MODE = true;
+
 export default function Index() {
   const { user, userData, role, loading } = useAuth();
   const router = useRouter();
@@ -13,7 +16,7 @@ export default function Index() {
     if (!user) {
       // Not authenticated - redirect to login
       router.replace("/(auth)/login");
-    } else if (!user.emailVerified) {
+    } else if (!user.emailVerified && !TEST_MODE) {
       // Email not verified - redirect to verification page
       router.replace("/(auth)/verify-email");
     } else if (!userData) {

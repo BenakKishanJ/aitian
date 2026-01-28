@@ -121,21 +121,104 @@ export async function seedFirestore() {
 
   /* ---------------- ATTENDANCE SESSION ---------------- */
 
-  await setDoc(
-    doc(db, "attendanceSessions", "att_2026_01_24_cs501_A"),
-    {
-      sessionId: "att_2026_01_24_cs501_A",
-      courseId: "cs501",
-      section: "A",
+  await setDoc(doc(db, "attendanceSessions", "att_2026_01_24_cs501_A"), {
+    sessionId: "att_2026_01_24_cs501_A",
+    courseId: "cs501",
+    section: "A",
+    semester: 5,
+    date: "2026-01-24",
+    startTime: "09:00",
+    endTime: "10:00",
+    startedBy: "teacher_1",
+    status: "closed",
+    presentStudentIds: ["student_1"],
+    absentStudentIds: [],
+    createdAt: serverTimestamp(),
+  });
+
+  /* ---------------- NEWS POSTS ---------------- */
+
+  await setDoc(doc(db, "newsPosts", "post_1"), {
+    title: "Mid-Semester Examinations - Important Notice",
+    content:
+      "Mid-semester examinations will commence from February 10th, 2026. All students are required to carry their ID cards and admit cards. The exam schedule has been posted on the notice board.",
+    mediaUrls: [],
+    postedBy: "admin_1",
+    authorName: "College Admin",
+    authorRole: "admin",
+    isAnonymous: false,
+    isPinned: true,
+    targetAudience: {
+      type: "all",
+    },
+    createdAt: serverTimestamp(),
+  });
+
+  await setDoc(doc(db, "newsPosts", "post_2"), {
+    title: "DBMS Lab Session Rescheduled",
+    content:
+      "The DBMS lab session scheduled for Monday has been rescheduled to Wednesday at 2:00 PM. Please make note of the change.",
+    mediaUrls: [],
+    postedBy: "teacher_1",
+    authorName: "Sam Smith",
+    authorRole: "teacher",
+    isAnonymous: false,
+    isPinned: false,
+    targetAudience: {
+      type: "departmentSemester",
+      department: "CSE",
       semester: 5,
-      date: "2026-01-24",
-      startTime: "09:00",
-      endTime: "10:00",
-      startedBy: "teacher_1",
-      status: "closed",
-      presentStudentIds: ["student_1"],
-      absentStudentIds: [],
-      createdAt: serverTimestamp(),
-    }
-  );
+    },
+    createdAt: serverTimestamp(),
+  });
+
+  await setDoc(doc(db, "newsPosts", "post_3"), {
+    title: "Technical Fest - TechX 2026",
+    content:
+      "Register now for TechX 2026! Various competitions including coding, hackathons, and paper presentations. Registration deadline: January 31st.",
+    mediaUrls: [],
+    postedBy: "admin_1",
+    authorName: "College Admin",
+    authorRole: "admin",
+    isAnonymous: false,
+    isPinned: false,
+    targetAudience: {
+      type: "all",
+    },
+    createdAt: serverTimestamp(),
+  });
+
+  await setDoc(doc(db, "newsPosts", "post_4"), {
+    title: "",
+    content:
+      "Reminder: Submit your assignment by tomorrow evening. Late submissions will not be accepted.",
+    mediaUrls: [],
+    postedBy: "teacher_1",
+    authorName: "Sam Smith",
+    authorRole: "teacher",
+    isAnonymous: false,
+    isPinned: false,
+    targetAudience: {
+      type: "department",
+      department: "CSE",
+    },
+    createdAt: serverTimestamp(),
+  });
+
+  await setDoc(doc(db, "newsPosts", "post_5"), {
+    title: "Career Guidance Workshop",
+    content:
+      "A career guidance workshop will be conducted for all 5th semester students on Friday, 3:00 PM in the auditorium. Industry experts will share insights on job opportunities and higher studies.",
+    mediaUrls: [],
+    postedBy: "admin_1",
+    authorName: "College Admin",
+    authorRole: "admin",
+    isAnonymous: false,
+    isPinned: false,
+    targetAudience: {
+      type: "semester",
+      semester: 5,
+    },
+    createdAt: serverTimestamp(),
+  });
 }

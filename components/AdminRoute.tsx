@@ -2,6 +2,9 @@ import { Redirect } from "expo-router";
 import { useAuth } from "@/lib/AuthContext";
 import { ActivityIndicator, View } from "react-native";
 
+// TEST MODE: Set to true to bypass email verification during testing
+const TEST_MODE = true;
+
 export default function AdminRoute({
   children,
 }: {
@@ -30,7 +33,7 @@ export default function AdminRoute({
   }
 
   // Email not verified
-  if (!user.emailVerified) {
+  if (!user.emailVerified && !TEST_MODE) {
     return <Redirect href="/(auth)/verify-email" />;
   }
 
