@@ -8,6 +8,7 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  Zap,
 } from "lucide-react-native";
 import { auth } from "@/lib/firebase";
 import { sendEmailVerification, reload } from "firebase/auth";
@@ -65,7 +66,7 @@ export default function VerifyEmailScreen() {
 
         // Redirect after verification
         setTimeout(() => {
-          router.replace("/");
+          router.replace("/(tabs)/home");
         }, 2000);
       }
     }, 5000);
@@ -111,13 +112,18 @@ export default function VerifyEmailScreen() {
 
   const handleContinue = () => {
     if (isVerified) {
-      router.replace("/");
+      router.replace("/(tabs)/home");
     } else {
       Alert.alert(
         "Email Not Verified",
         "Please verify your email before continuing.",
       );
     }
+  };
+
+  // TEST ONLY: Skip to homepage directly
+  const handleTestSkip = () => {
+    router.replace("/(tabs)/home");
   };
 
   return (
@@ -318,6 +324,41 @@ export default function VerifyEmailScreen() {
                     </ButtonText>
                   </HStack>
                 </Button>
+
+                {/* TEST ONLY: Skip to Homepage Button */}
+                <Button
+                  onPress={handleTestSkip}
+                  className="bg-[#FFA500] rounded-lg w-full"
+                  size="lg"
+                >
+                  <HStack className="items-center justify-center" space="sm">
+                    <Icon as={Zap} size="md" className="text-white" />
+                    <ButtonText className="text-white font-semibold text-lg">
+                      🧪 Test: Skip to Homepage
+                    </ButtonText>
+                  </HStack>
+                </Button>
+
+                {/* Warning for test button */}
+                <View
+                  className="w-full p-3 rounded-lg border-l-4"
+                  style={{
+                    backgroundColor: "#2A2A2D",
+                    borderLeftColor: "#FFA500",
+                  }}
+                >
+                  <HStack space="md" className="items-start">
+                    <Icon
+                      as={MailWarning}
+                      size="sm"
+                      className="text-[#FFA500] mt-1"
+                    />
+                    <Text className="text-[#C5D4CA] flex-1 text-xs leading-4">
+                      ⚠️ Testing only: Skip directly to homepage without
+                      verification. Remove before production!
+                    </Text>
+                  </HStack>
+                </View>
 
                 {/* Divider */}
                 <HStack className="items-center my-2">
