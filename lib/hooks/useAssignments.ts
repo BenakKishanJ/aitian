@@ -14,6 +14,7 @@ import {
   getDoc,
   updateDoc,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
@@ -57,7 +58,12 @@ export interface UseAssignmentsOptions {
 
 export function useAssignments(options: UseAssignmentsOptions) {
   const { user, userData, role } = useAuth();
-  const { courseInstanceId, searchQuery, statusFilter, pageSize = 20 } = options;
+  const {
+    courseInstanceId,
+    searchQuery,
+    statusFilter,
+    pageSize = 20,
+  } = options;
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +86,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
         assignmentsRef,
         where("courseInstanceId", "==", courseInstanceId),
         orderBy("dueDate", "desc"),
-        limit(pageSize)
+        limit(pageSize),
       );
 
       if (loadMore && lastDoc) {
@@ -89,13 +95,13 @@ export function useAssignments(options: UseAssignmentsOptions) {
           where("courseInstanceId", "==", courseInstanceId),
           orderBy("dueDate", "desc"),
           startAfter(lastDoc),
-          limit(pageSize)
+          limit(pageSize),
         );
       }
 
       const assignmentsSnap = await getDocs(assignmentsQuery);
       const fetchedAssignments = assignmentsSnap.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() } as Assignment)
+        (doc) => ({ id: doc.id, ...doc.data() }) as Assignment,
       );
 
       // Fetch creator names
@@ -116,7 +122,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
           const submissionQuery = query(
             submissionsRef,
             where("assignmentId", "==", assignment.id),
-            where("studentId", "==", user.uid)
+            where("studentId", "==", user.uid),
           );
           const submissionSnap = await getDocs(submissionQuery);
 
@@ -126,8 +132,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
               ? assignment.dueDate.toDate()
               : new Date(assignment.dueDate);
             const now = new Date();
-            assignment.submissionStatus =
-              now > dueDate ? "overdue" : "pending";
+            assignment.submissionStatus = now > dueDate ? "overdue" : "pending";
           } else {
             const submissionData = submissionSnap.docs[0].data();
             assignment.submission = {
@@ -149,7 +154,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
           const submissionQuery = query(
             submissionsRef,
             where("assignmentId", "==", assignment.id),
-            where("studentId", "==", userData.linkedStudentId)
+            where("studentId", "==", userData.linkedStudentId),
           );
           const submissionSnap = await getDocs(submissionQuery);
 
@@ -158,8 +163,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
               ? assignment.dueDate.toDate()
               : new Date(assignment.dueDate);
             const now = new Date();
-            assignment.submissionStatus =
-              now > dueDate ? "overdue" : "pending";
+            assignment.submissionStatus = now > dueDate ? "overdue" : "pending";
           } else {
             const submissionData = submissionSnap.docs[0].data();
             assignment.submission = {
@@ -183,14 +187,14 @@ export function useAssignments(options: UseAssignmentsOptions) {
         filteredAssignments = fetchedAssignments.filter(
           (assignment) =>
             assignment.title.toLowerCase().includes(query) ||
-            assignment.description.toLowerCase().includes(query)
+            assignment.description.toLowerCase().includes(query),
         );
       }
 
       // Apply status filter
       if (statusFilter && statusFilter !== "all" && role === "student") {
         filteredAssignments = filteredAssignments.filter(
-          (assignment) => assignment.submissionStatus === statusFilter
+          (assignment) => assignment.submissionStatus === statusFilter,
         );
       }
 
@@ -236,6 +240,42 @@ export function useAssignments(options: UseAssignmentsOptions) {
       };
 
       const docRef = await addDoc(collection(db, "assignments"), newAssignment);
+
+      // Automatically create a calendar event for the assignment deadline
+      try {
+        // Get course instance details for the course name
+        const courseInstanceDoc = await getDoc(
+          doc(db, "courseInstances", courseInstanceId),
+        );
+        const courseName = courseInstanceDoc.exists()
+          ? courseInstanceDoc.data()?.courseName || "Course"
+          : "Course";
+
+        // Create calendar event at the due date/time
+        const eventStartTime = Timestamp.fromDate(assignmentData.dueDate);
+        const eventEndTime = Timestamp.fromDate(
+          new Date(assignmentData.dueDate.getTime() + 60 * 60 * 1000), // +1 hour
+        );
+
+        await addDoc(collection(db, "calendarEvents"), {
+          title: `${assignmentData.title} - Due`,
+          type: "assignment",
+          courseInstanceId: courseInstanceId,
+          courseName: courseName,
+          createdBy: user.uid,
+          startTime: eventStartTime,
+          endTime: eventEndTime,
+          isAttendanceEnabled: false,
+          createdAt: serverTimestamp(),
+        });
+      } catch (calendarError) {
+        console.error(
+          "Error creating calendar event for assignment:",
+          calendarError,
+        );
+        // Don't fail the assignment creation if calendar event fails
+      }
+
       await refresh();
       return docRef.id;
     } catch (err: any) {
@@ -254,6 +294,10 @@ export function useAssignments(options: UseAssignmentsOptions) {
     }
 
     try {
+      // Get assignment to find related calendar events
+      const assignmentDoc = await getDoc(doc(db, "assignments", assignmentId));
+      const assignmentData = assignmentDoc.data();
+
       // Delete assignment
       await deleteDoc(doc(db, "assignments", assignmentId));
 
@@ -261,14 +305,41 @@ export function useAssignments(options: UseAssignmentsOptions) {
       const submissionsRef = collection(db, "submissions");
       const submissionsQuery = query(
         submissionsRef,
-        where("assignmentId", "==", assignmentId)
+        where("assignmentId", "==", assignmentId),
       );
       const submissionsSnap = await getDocs(submissionsQuery);
 
       const deletePromises = submissionsSnap.docs.map((doc) =>
-        deleteDoc(doc.ref)
+        deleteDoc(doc.ref),
       );
       await Promise.all(deletePromises);
+
+      // Delete related calendar events (assignment type events for this course instance)
+      if (assignmentData) {
+        try {
+          const calendarEventsRef = collection(db, "calendarEvents");
+          const calendarQuery = query(
+            calendarEventsRef,
+            where("type", "==", "assignment"),
+            where("courseInstanceId", "==", assignmentData.courseInstanceId),
+          );
+          const calendarSnap = await getDocs(calendarQuery);
+
+          // Find events that match the assignment title
+          const eventsToDelete = calendarSnap.docs.filter((doc) => {
+            const eventData = doc.data();
+            return eventData.title?.includes(assignmentData.title);
+          });
+
+          const deleteCalendarPromises = eventsToDelete.map((doc) =>
+            deleteDoc(doc.ref),
+          );
+          await Promise.all(deleteCalendarPromises);
+        } catch (calendarError) {
+          console.error("Error deleting calendar events:", calendarError);
+          // Don't fail the assignment deletion if calendar deletion fails
+        }
+      }
 
       // Remove from local state
       setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
@@ -283,7 +354,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
     submissionData: {
       submissionUrl?: string;
       submissionText?: string;
-    }
+    },
   ) => {
     if (!user || role !== "student") {
       throw new Error("Only students can submit assignments");
@@ -308,7 +379,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
   const gradeSubmission = async (
     submissionId: string,
     grade: number,
-    feedback?: string
+    feedback?: string,
   ) => {
     if (!user) {
       throw new Error("User not authenticated");
