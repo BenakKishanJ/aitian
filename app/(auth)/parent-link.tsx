@@ -254,7 +254,7 @@ export default function ParentLinkScreen() {
   }
 
   if (role !== "parent" && role !== "student") {
-    router.replace("/(tabs)/home");
+    router.replace("/(tabs)");
     return null;
   }
 

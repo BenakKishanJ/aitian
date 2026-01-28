@@ -115,7 +115,7 @@ export default function UnauthorizedScreen() {
             <View className="flex-1 h-px bg-[#2A2A2D]" />
           </HStack>
 
-          <TouchableOpacity onPress={() => router.replace("/(tabs)/home")}>
+          <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
             <View className="border-2 border-[#C5D4CA] rounded-lg py-3 items-center">
               <HStack className="items-center" space="sm">
                 <Icon as={Home} size="md" className="text-[#C5D4CA]" />

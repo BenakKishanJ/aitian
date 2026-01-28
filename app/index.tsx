@@ -26,7 +26,7 @@ export default function Index() {
         router.replace("/admin");
       } else {
         // Regular users (student, teacher, parent) go to tabs
-        router.replace("/(tabs)/home");
+        router.replace("/(tabs)");
       }
     }
   }, [user, userData, role, loading]);
