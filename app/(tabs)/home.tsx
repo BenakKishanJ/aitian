@@ -1,5 +1,5 @@
-import { View } from 'react-native'
-import { Text } from '@/components/ui/text'
+import { View } from "react-native";
+import { Text } from "@/components/ui/text";
 import { ScrollView } from "react-native";
 import { FirestoreSeeder } from "@/components/dev/FirestoreSeeder";
 
