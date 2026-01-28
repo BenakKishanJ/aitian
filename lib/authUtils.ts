@@ -1,4 +1,4 @@
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from "firebase/firestore";
 
 export type Role = "student" | "teacher" | "parent" | "admin";
 
@@ -11,7 +11,13 @@ export interface UserData {
   name: string;
   batch?: string;
   dept?: string;
+  department?: string;
   usn?: string;
+  semester?: number;
+  section?: string;
+  teacherCode?: string;
+  photoURL?: string;
+  isActive?: boolean;
   createdAt: Date | Timestamp | any;
 }
 
@@ -19,27 +25,31 @@ export interface UserData {
  * Validates if the email is from the allowed organizational domain
  */
 export function isValidOrgEmail(email: string): boolean {
-  return email.endsWith('@drait.edu.in');
+  return email.endsWith("@drait.edu.in");
 }
 
 /**
  * Infers user role and details from email
  */
-export function inferUserDetails(email: string): Omit<UserData, 'email' | 'createdAt'> | null {
+export function inferUserDetails(
+  email: string,
+): Omit<UserData, "email" | "createdAt"> | null {
   if (!isValidOrgEmail(email)) return null;
 
-  const localPart = email.split('@')[0];
+  const localPart = email.split("@")[0];
 
   // Student pattern: 1da22cs040.cs
-  const studentMatch = localPart.match(/^(\d)(da)(\d{2})([a-z]{2})(\d{3})\.([a-z]{2})$/);
+  const studentMatch = localPart.match(
+    /^(\d)(da)(\d{2})([a-z]{2})(\d{3})\.([a-z]{2})$/,
+  );
   if (studentMatch) {
     const [, , , batch, dept, usn] = studentMatch;
     return {
-      uid: '', // Will be filled during registration
+      uid: "", // Will be filled during registration
       profileComplete: false, // Will be updated after profile completion
-      name: '', // Will be filled during registration
-      role: 'student',
-      batch: '20' + batch,
+      name: "", // Will be filled during registration
+      role: "student",
+      batch: "20" + batch,
       dept: dept.toUpperCase(),
       usn,
     };
@@ -50,10 +60,10 @@ export function inferUserDetails(email: string): Omit<UserData, 'email' | 'creat
   if (teacherMatch) {
     const [, , dept] = teacherMatch;
     return {
-      uid: '', // Will be filled during registration
+      uid: "", // Will be filled during registration
       profileComplete: false, // Will be updated after profile completion
-      name: '', // Will be filled during registration
-      role: 'teacher',
+      name: "", // Will be filled during registration
+      role: "teacher",
       dept: dept.toUpperCase(),
     };
   }
@@ -68,8 +78,8 @@ export async function validateAdminSecret(inputCode: string): Promise<boolean> {
   try {
     // Fetch admin secret from Firestore (assuming it's stored in a config collection)
     // In production, this should be hashed and compared securely
-    const { db } = await import('./firebase');
-    const docRef = doc(db, 'config', 'adminSecret');
+    const { db } = await import("./firebase");
+    const docRef = doc(db, "config", "adminSecret");
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
@@ -78,7 +88,7 @@ export async function validateAdminSecret(inputCode: string): Promise<boolean> {
     }
     return false;
   } catch (error) {
-    console.error('Error validating admin secret:', error);
+    console.error("Error validating admin secret:", error);
     return false;
   }
 }
