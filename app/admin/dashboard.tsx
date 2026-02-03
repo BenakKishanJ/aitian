@@ -52,6 +52,19 @@ export default function AdminDashboard() {
               Manage students, teachers, and parents
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push("/admin/events")}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: "#FEF3C7" }]}>
+              <Calendar size={28} color="#92400E" />
+            </View>
+            <Text style={styles.cardTitle}>Calendar Events</Text>
+            <Text style={styles.cardDescription}>
+              Manage classes, exams, and events
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </LinearGradient>

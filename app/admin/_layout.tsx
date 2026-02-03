@@ -1,5 +1,5 @@
-import { Stack } from 'expo-router';
-import AdminRoute from '@/components/AdminRoute';
+import { Stack } from "expo-router";
+import AdminRoute from "@/components/AdminRoute";
 
 export default function AdminLayout() {
   return (
