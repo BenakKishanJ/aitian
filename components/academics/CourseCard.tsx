@@ -6,10 +6,10 @@ import { Text } from "@/components/ui/text";
 import { HStack } from "@/components/ui/hstack";
 import { VStack } from "@/components/ui/vstack";
 import { Icon } from "@/components/ui/icon";
-import { CourseInstance } from "@/lib/hooks/useCourses";
+import type { CourseInstanceWithDetails } from "@/types";
 
 interface CourseCardProps {
-  courseInstance: CourseInstance;
+  courseInstance: CourseInstanceWithDetails;
   role: "student" | "teacher" | "parent" | "admin";
 }
 

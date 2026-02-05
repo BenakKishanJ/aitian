@@ -14,8 +14,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Search, Plus, X, Filter, FileText } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
-import { useAssignments, Assignment } from "@/lib/hooks/useAssignments";
+import { useAssignments } from "@/lib/hooks/useAssignments";
+import type { AssignmentWithStatus } from "@/types";
 import { AssignmentCard } from "@/components/academics/AssignmentCard";
+import type { AssignmentStatus } from "@/types";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
@@ -29,11 +31,11 @@ export default function AssignmentsScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>("all");
+  const [statusFilter, setStatusFilter] = useState<AssignmentStatus | "all" | null>("all");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentWithStatus | null>(null);
 
   // Create form state
   const [createTitle, setCreateTitle] = useState("");
@@ -61,13 +63,13 @@ export default function AssignmentsScreen() {
   } = useAssignments({
     courseInstanceId: courseInstanceId as string,
     searchQuery,
-    statusFilter: role === "student" ? statusFilter : null,
+    status: role === "student" ? statusFilter : null,
   });
 
   const canCreate = role === "teacher" || role === "admin";
   const canSubmit = role === "student";
 
-  const statusFilters = [
+  const statusFilters: { value: AssignmentStatus | "all"; label: string }[] = [
     { value: "all", label: "All Assignments" },
     { value: "pending", label: "Pending" },
     { value: "submitted", label: "Submitted" },
@@ -167,7 +169,7 @@ export default function AssignmentsScreen() {
     setShowCreateModal(false);
   };
 
-  const handleAssignmentPress = (assignment: Assignment) => {
+  const handleAssignmentPress = (assignment: AssignmentWithStatus) => {
     setSelectedAssignment(assignment);
     setShowDetailModal(true);
   };

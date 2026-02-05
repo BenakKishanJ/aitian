@@ -21,8 +21,10 @@ import { Icon } from "@/components/ui/icon";
 
 export default function AcademicsScreen() {
   const { user, userData, role } = useAuth();
+  // Get semester from userData if student, otherwise null
+  const userSemester = userData?.role === "student" ? userData.semester : null;
   const [selectedSemester, setSelectedSemester] = useState<number | null>(
-    userData?.semester || null,
+    userSemester,
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -32,7 +34,7 @@ export default function AcademicsScreen() {
     searchQuery: searchQuery,
   });
 
-  const currentSemester = userData?.semester || 1;
+  const currentSemester = userSemester || 1;
 
   const handleCreateCourse = () => {
     // TODO: Navigate to create course modal/page

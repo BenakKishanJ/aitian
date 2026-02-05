@@ -11,6 +11,7 @@ import {
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/AuthContext';
 import { ExpandedEvent } from './useCalendarEvents';
+import type { ParentUserData } from '@/types';
 
 export interface HomeStats {
   // Student stats
@@ -421,10 +422,14 @@ export function useHomeData() {
   };
 
   const fetchParentData = async () => {
-    if (!user || !userData || !userData.linkedStudentId) return;
+    if (!user || !userData) return;
+    
+    // Cast to ParentUserData to access linkedStudentId
+    const parentData = userData as import('@/types').ParentUserData;
+    if (!parentData.linkedStudentId) return;
 
     try {
-      const studentId = userData.linkedStudentId;
+      const studentId = parentData.linkedStudentId;
       const stats: HomeStats = {};
 
       // Get child's attendance

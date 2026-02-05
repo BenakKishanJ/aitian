@@ -1,5 +1,6 @@
 import React from "react";
 import { TouchableOpacity, View, StyleSheet, Alert } from "react-native";
+import { Timestamp } from "firebase/firestore";
 import {
   FileText,
   Calendar,
@@ -14,12 +15,12 @@ import { Text } from "@/components/ui/text";
 import { HStack } from "@/components/ui/hstack";
 import { VStack } from "@/components/ui/vstack";
 import { Icon } from "@/components/ui/icon";
-import { Assignment } from "@/lib/hooks/useAssignments";
+import type { AssignmentWithStatus } from "@/types";
 
 interface AssignmentCardProps {
-  assignment: Assignment;
+  assignment: AssignmentWithStatus;
   role: "student" | "teacher" | "parent" | "admin";
-  onPress: (assignment: Assignment) => void;
+  onPress: (assignment: AssignmentWithStatus) => void;
   onDelete?: (assignmentId: string) => void;
 }
 
@@ -91,7 +92,7 @@ export function AssignmentCard({
 
   const isOverdue = () => {
     if (!assignment.dueDate) return false;
-    const dueDate = assignment.dueDate.toDate
+    const dueDate = assignment.dueDate instanceof Timestamp
       ? assignment.dueDate.toDate()
       : new Date(assignment.dueDate);
     return new Date() > dueDate;
@@ -99,7 +100,7 @@ export function AssignmentCard({
 
   const getDaysUntilDue = () => {
     if (!assignment.dueDate) return null;
-    const dueDate = assignment.dueDate.toDate
+    const dueDate = assignment.dueDate instanceof Timestamp
       ? assignment.dueDate.toDate()
       : new Date(assignment.dueDate);
     const now = new Date();

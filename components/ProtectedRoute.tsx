@@ -48,9 +48,12 @@ export default function ProtectedRoute({
   }
 
   // Parent without approved links - still allow access but filter content in components
-  if (role === "parent" && !userData.linkedStudentId) {
-    // Still allow access but will show limited content
-    return <>{children}</>;
+  if (role === "parent") {
+    const parentData = userData as import("@/types").ParentUserData;
+    if (!parentData.linkedStudentId) {
+      // Still allow access but will show limited content
+      return <>{children}</>;
+    }
   }
 
   // All checks passed - render protected content

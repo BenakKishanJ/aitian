@@ -147,29 +147,29 @@ export default function NewsScreen() {
       if (audience.type === "all") return true;
 
       // Student filtering
-      if (role === "student") {
+      if (role === "student" && userData.role === "student") {
         if (audience.type === "department") {
-          return audience.department === userData.department;
+          return audience.department === userData.departmentId;
         }
         if (audience.type === "semester") {
           return audience.semester === userData.semester;
         }
         if (audience.type === "departmentSemester") {
           return (
-            audience.department === userData.department &&
+            audience.department === userData.departmentId &&
             audience.semester === userData.semester
           );
         }
       }
 
       // Teacher filtering
-      if (role === "teacher") {
+      if (role === "teacher" && userData.role === "teacher") {
         if (audience.type === "department") {
-          return audience.department === userData.department;
+          return audience.department === userData.departmentId;
         }
         // Teachers can see semester-specific posts in their department
         if (audience.type === "departmentSemester") {
-          return audience.department === userData.department;
+          return audience.department === userData.departmentId;
         }
       }
 

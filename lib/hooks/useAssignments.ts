@@ -18,41 +18,20 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import type {
+  Assignment,
+  AssignmentWithStatus,
+  Submission,
+  AssignmentFilterOptions,
+  AssignmentStatus,
+  ParentUserData,
+} from "@/types";
 
-export interface Assignment {
-  id: string;
+export type { Assignment, AssignmentWithStatus, Submission, AssignmentStatus };
+
+export interface UseAssignmentsOptions extends Omit<AssignmentFilterOptions, 'status'> {
   courseInstanceId: string;
-  title: string;
-  description: string;
-  dueDate: any;
-  maxScore?: number;
-  attachmentUrl?: string;
-  createdBy: string;
-  createdByName?: string;
-  createdAt: any;
-  // For students
-  submissionStatus?: "pending" | "submitted" | "graded" | "overdue";
-  submission?: Submission;
-}
-
-export interface Submission {
-  id: string;
-  assignmentId: string;
-  studentId: string;
-  studentName?: string;
-  submissionUrl?: string;
-  submissionText?: string;
-  submittedAt: any;
-  grade?: number;
-  feedback?: string;
-  gradedBy?: string;
-  gradedAt?: any;
-}
-
-export interface UseAssignmentsOptions {
-  courseInstanceId: string;
-  searchQuery?: string;
-  statusFilter?: string | null;
+  status?: AssignmentStatus | 'all' | null;
   pageSize?: number;
 }
 
@@ -61,11 +40,11 @@ export function useAssignments(options: UseAssignmentsOptions) {
   const {
     courseInstanceId,
     searchQuery,
-    statusFilter,
+    status,
     pageSize = 20,
   } = options;
 
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignments, setAssignments] = useState<AssignmentWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -101,7 +80,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
 
       const assignmentsSnap = await getDocs(assignmentsQuery);
       const fetchedAssignments = assignmentsSnap.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() }) as Assignment,
+        (doc) => ({ id: doc.id, ...doc.data() }) as AssignmentWithStatus,
       );
 
       // Fetch creator names
@@ -128,7 +107,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
 
           if (submissionSnap.empty) {
             // Check if overdue
-            const dueDate = assignment.dueDate?.toDate
+            const dueDate = assignment.dueDate instanceof Timestamp
               ? assignment.dueDate.toDate()
               : new Date(assignment.dueDate);
             const now = new Date();
@@ -149,32 +128,35 @@ export function useAssignments(options: UseAssignmentsOptions) {
         }
 
         // For parents, fetch linked student's submission status
-        if (role === "parent" && userData?.linkedStudentId) {
-          const submissionsRef = collection(db, "submissions");
-          const submissionQuery = query(
-            submissionsRef,
-            where("assignmentId", "==", assignment.id),
-            where("studentId", "==", userData.linkedStudentId),
-          );
-          const submissionSnap = await getDocs(submissionQuery);
+        if (role === "parent" && userData) {
+          const parentData = userData as ParentUserData;
+            if (parentData.linkedStudentId) {
+            const submissionsRef = collection(db, "submissions");
+            const submissionQuery = query(
+              submissionsRef,
+              where("assignmentId", "==", assignment.id),
+              where("studentId", "==", parentData.linkedStudentId),
+            );
+            const submissionSnap = await getDocs(submissionQuery);
 
-          if (submissionSnap.empty) {
-            const dueDate = assignment.dueDate?.toDate
-              ? assignment.dueDate.toDate()
-              : new Date(assignment.dueDate);
-            const now = new Date();
-            assignment.submissionStatus = now > dueDate ? "overdue" : "pending";
-          } else {
-            const submissionData = submissionSnap.docs[0].data();
-            assignment.submission = {
-              id: submissionSnap.docs[0].id,
-              ...submissionData,
-            } as Submission;
-
-            if (submissionData.grade !== undefined) {
-              assignment.submissionStatus = "graded";
+            if (submissionSnap.empty) {
+              const dueDate = assignment.dueDate instanceof Timestamp
+                ? assignment.dueDate.toDate()
+                : new Date(assignment.dueDate);
+              const now = new Date();
+              assignment.submissionStatus = now > dueDate ? "overdue" : "pending";
             } else {
-              assignment.submissionStatus = "submitted";
+              const submissionData = submissionSnap.docs[0].data();
+              assignment.submission = {
+                id: submissionSnap.docs[0].id,
+                ...submissionData,
+              } as Submission;
+
+              if (submissionData.grade !== undefined) {
+                assignment.submissionStatus = "graded";
+              } else {
+                assignment.submissionStatus = "submitted";
+              }
             }
           }
         }
@@ -192,9 +174,9 @@ export function useAssignments(options: UseAssignmentsOptions) {
       }
 
       // Apply status filter
-      if (statusFilter && statusFilter !== "all" && role === "student") {
+      if (status && status !== "all" && role === "student") {
         filteredAssignments = filteredAssignments.filter(
-          (assignment) => assignment.submissionStatus === statusFilter,
+          (assignment) => assignment.submissionStatus === status as AssignmentWithStatus['submissionStatus'],
         );
       }
 
@@ -418,7 +400,7 @@ export function useAssignments(options: UseAssignmentsOptions) {
 
   useEffect(() => {
     fetchAssignments(false);
-  }, [courseInstanceId, searchQuery, statusFilter]);
+  }, [courseInstanceId, searchQuery, status]);
 
   return {
     assignments,

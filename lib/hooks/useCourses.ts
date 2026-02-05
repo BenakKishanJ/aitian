@@ -13,41 +13,17 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import type {
+  Course,
+  CourseInstance,
+  CourseInstanceWithDetails,
+  CourseFilterOptions,
+  ParentUserData,
+} from "@/types";
 
-export interface Course {
-  id: string;
-  courseCode: string;
-  name: string;
-  departmentId: string;
-  semester: number;
-  credits: number;
-  isElective: boolean;
-  metadata?: {
-    labRequired?: boolean;
-    examType?: string;
-  };
-}
+export type { Course, CourseInstance, CourseInstanceWithDetails, CourseFilterOptions };
 
-export interface CourseInstance {
-  id: string;
-  courseId: string;
-  departmentId: string;
-  semester: number;
-  section: string;
-  teacherIds: string[];
-  enrollmentType: "mandatory" | "elective";
-  isActive: boolean;
-  createdAt: any;
-  // Joined data
-  course?: Course;
-  teacherNames?: string[];
-  attendancePercentage?: number; // For students
-  totalStudents?: number; // For teachers/admins
-}
-
-export interface UseCourseOptions {
-  semester?: number | null; // null means all semesters
-  searchQuery?: string;
+export interface UseCourseOptions extends CourseFilterOptions {
   pageSize?: number;
 }
 
@@ -55,7 +31,7 @@ export function useCourses(options: UseCourseOptions = {}) {
   const { user, userData, role } = useAuth();
   const { semester, searchQuery, pageSize = 20 } = options;
 
-  const [courses, setCourses] = useState<CourseInstance[]>([]);
+  const [courses, setCourses] = useState<CourseInstanceWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -72,7 +48,7 @@ export function useCourses(options: UseCourseOptions = {}) {
       setLoading(true);
       setError(null);
 
-      let courseInstances: CourseInstance[] = [];
+      let courseInstances: CourseInstanceWithDetails[] = [];
 
       if (role === "student") {
         // Fetch student's enrollments
@@ -117,7 +93,7 @@ export function useCourses(options: UseCourseOptions = {}) {
         const batchResults = await Promise.all(batches);
         const allInstances = batchResults.flatMap((snap) =>
           snap.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstance,
+            (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails,
           ),
         );
 
@@ -191,7 +167,7 @@ export function useCourses(options: UseCourseOptions = {}) {
 
         const instancesSnap = await getDocs(instancesQuery);
         courseInstances = instancesSnap.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstance,
+          (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails,
         );
 
         // Get total students for each course
@@ -206,7 +182,9 @@ export function useCourses(options: UseCourseOptions = {}) {
         }
       } else if (role === "parent") {
         // Fetch linked student's courses
-        if (!userData.linkedStudentId) {
+        // Cast to ParentUserData to access linkedStudentId
+        const parentData = userData as ParentUserData;
+        if (!parentData.linkedStudentId) {
           setCourses([]);
           setLoading(false);
           setHasMore(false);
@@ -216,7 +194,7 @@ export function useCourses(options: UseCourseOptions = {}) {
         const enrollmentsRef = collection(db, "enrollments");
         const enrollmentsQuery = query(
           enrollmentsRef,
-          where("studentId", "==", userData.linkedStudentId),
+          where("studentId", "==", parentData.linkedStudentId),
         );
 
         const enrollmentsSnap = await getDocs(enrollmentsQuery);
@@ -246,7 +224,7 @@ export function useCourses(options: UseCourseOptions = {}) {
         const batchResults = await Promise.all(batches);
         const allInstances = batchResults.flatMap((snap) =>
           snap.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstance,
+            (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails,
           ),
         );
 
@@ -301,7 +279,7 @@ export function useCourses(options: UseCourseOptions = {}) {
 
         const instancesSnap = await getDocs(instancesQuery);
         courseInstances = instancesSnap.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstance,
+          (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails,
         );
 
         if (instancesSnap.docs.length > 0) {

@@ -1,25 +1,14 @@
 import { doc, getDoc, Timestamp } from "firebase/firestore";
+import type { Role, UserData, UserRegistrationData, DepartmentId } from "@/types";
+import {
+  getDepartmentByCode,
+} from "@/types/constants";
 
-export type Role = "student" | "teacher" | "parent" | "admin";
-
-export interface UserData {
-  uid: string;
-  role: Role;
-  profileComplete: boolean;
-  linkedStudentId?: string;
-  email: string;
-  name: string;
-  batch?: string;
-  dept?: string;
-  department?: string;
-  usn?: string;
-  semester?: number;
-  section?: string;
-  teacherCode?: string;
-  photoURL?: string;
-  isActive?: boolean;
-  createdAt: Date | Timestamp | any;
-}
+/**
+ * Re-export types from centralized location
+ * @deprecated Import directly from @/types instead
+ */
+export type { Role, UserData };
 
 /**
  * Validates if the email is from the allowed organizational domain
@@ -30,10 +19,11 @@ export function isValidOrgEmail(email: string): boolean {
 
 /**
  * Infers user role and details from email
+ * Returns registration data that can be used to create a user
  */
 export function inferUserDetails(
   email: string,
-): Omit<UserData, "email" | "createdAt"> | null {
+): Omit<UserRegistrationData, "email" | "name"> | null {
   if (!isValidOrgEmail(email)) return null;
 
   const localPart = email.split("@")[0];
@@ -43,28 +33,26 @@ export function inferUserDetails(
     /^(\d)(da)(\d{2})([a-z]{2})(\d{3})\.([a-z]{2})$/,
   );
   if (studentMatch) {
-    const [, , , batch, dept, usn] = studentMatch;
+    const [, , , batch, deptCode, usn] = studentMatch;
+    const department = getDepartmentByCode(deptCode);
+
     return {
-      uid: "", // Will be filled during registration
-      profileComplete: false, // Will be updated after profile completion
-      name: "", // Will be filled during registration
       role: "student",
       batch: "20" + batch,
-      dept: dept.toUpperCase(),
-      usn,
+      departmentId: (department?.id ?? deptCode.toLowerCase()) as DepartmentId,
+      usn: `1DA${batch}${deptCode.toUpperCase()}${usn}`,
     };
   }
 
   // Teacher pattern: harishd.cs
   const teacherMatch = localPart.match(/^([a-z]+)\.([a-z]{2})$/);
   if (teacherMatch) {
-    const [, , dept] = teacherMatch;
+    const [, , deptCode] = teacherMatch;
+    const department = getDepartmentByCode(deptCode);
+
     return {
-      uid: "", // Will be filled during registration
-      profileComplete: false, // Will be updated after profile completion
-      name: "", // Will be filled during registration
       role: "teacher",
-      dept: dept.toUpperCase(),
+      departmentId: (department?.id ?? deptCode.toLowerCase()) as DepartmentId,
     };
   }
 
@@ -76,19 +64,35 @@ export function inferUserDetails(
  */
 export async function validateAdminSecret(inputCode: string): Promise<boolean> {
   try {
-    // Fetch admin secret from Firestore (assuming it's stored in a config collection)
-    // In production, this should be hashed and compared securely
     const { db } = await import("./firebase");
     const docRef = doc(db, "config", "adminSecret");
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
       const storedSecret = docSnap.data().secret;
-      return inputCode === storedSecret; // Plain text comparison - use hashing in production
+      return inputCode === storedSecret;
     }
     return false;
   } catch (error) {
     console.error("Error validating admin secret:", error);
     return false;
   }
+}
+
+/**
+ * Get display name for a department
+ */
+export function getDepartmentDisplayName(departmentId?: string): string {
+  if (!departmentId) return "Unknown";
+  const dept = getDepartmentByCode(departmentId);
+  return dept?.name ?? departmentId.toUpperCase();
+}
+
+/**
+ * Get department code from department ID
+ */
+export function getDepartmentCode(departmentId?: string): string {
+  if (!departmentId) return "";
+  const dept = getDepartmentByCode(departmentId);
+  return dept?.code ?? departmentId.toUpperCase();
 }

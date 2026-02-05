@@ -2,22 +2,24 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import type { Role, UserData, AuthState } from '@/types';
 
-export type UserRole = 'student' | 'teacher' | 'parent' | 'admin';
+/**
+ * @deprecated Use AuthState from @/types instead
+ */
+export interface AuthUser extends AuthState {}
 
-export interface AuthUser {
-  firebaseUser: User | null;
-  userData: any | null;
-  role: UserRole | null;
-  loading: boolean;
-}
+/**
+ * @deprecated Use Role from @/types instead
+ */
+export type UserRole = Role;
 
-export function useAuth(): AuthUser {
-  const [authState, setAuthState] = useState<AuthUser>({
+export function useAuth(): AuthState {
+  const [authState, setAuthState] = useState<AuthState>({
     firebaseUser: null,
-    userData: null,
-    role: null,
+    user: null,
     loading: true,
+    isAuthenticated: false,
   });
 
   useEffect(() => {
@@ -27,13 +29,13 @@ export function useAuth(): AuthUser {
         const userRef = doc(db, 'users', firebaseUser.uid);
 
         const unsubscribeUserData = onSnapshot(userRef, (docSnap) => {
-          const userData = docSnap.data();
+          const userData = docSnap.data() as UserData | undefined;
 
           setAuthState({
             firebaseUser,
-            userData,
-            role: userData?.role || null,
+            user: userData ?? null,
             loading: false,
+            isAuthenticated: true,
           });
         });
 
@@ -42,9 +44,9 @@ export function useAuth(): AuthUser {
         // User is signed out
         setAuthState({
           firebaseUser: null,
-          userData: null,
-          role: null,
+          user: null,
           loading: false,
+          isAuthenticated: false,
         });
       }
     });
