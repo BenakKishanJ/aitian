@@ -3,150 +3,199 @@ import {
   View,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
-  TextInput,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams } from "expo-router";
-import { MessageSquare, Plus, Send, Search, X } from "lucide-react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
-import { Icon } from "@/components/ui/icon";
+import { Plus, MessageSquare, Search, Pin } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
+import { useDiscussions } from "@/lib/hooks/useDiscussions";
+import { DiscussionThreadCard } from "@/components/discussion/DiscussionThreadCard";
+import { CreateDiscussionModal } from "@/components/discussion/CreateDiscussionModal";
+import { useCourseDetails } from "@/lib/hooks/useCourseDetails";
 
 export default function DiscussionsScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
     courseInstanceId: string;
   }>();
-  const { role } = useAuth();
+  const router = useRouter();
+  const { role, user } = useAuth();
+  const isTeacherOrAdmin = role === "teacher" || role === "admin";
+  
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
-  const [newThreadTitle, setNewThreadTitle] = useState("");
-  const [newThreadContent, setNewThreadContent] = useState("");
-  const [showCreateThread, setShowCreateThread] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const {
+    courseDetails,
+  } = useCourseDetails(courseInstanceId as string);
 
-  // Mock data for now
-  const discussions = [];
+  const {
+    discussions,
+    loading,
+    error,
+    creating,
+    createDiscussion,
+    togglePin,
+    deleteDiscussion,
+    refresh,
+  } = useDiscussions({
+    courseInstanceId: courseInstanceId as string,
+    pinnedOnly: showPinnedOnly,
+  });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+
+  const handleTogglePin = async (discussionId: string, currentPinned: boolean) => {
+    try {
+      await togglePin(discussionId, currentPinned);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to toggle pin");
+    }
+  };
+
+  const handleDelete = async (discussionId: string) => {
+    Alert.alert(
+      "Delete Discussion",
+      "Are you sure you want to delete this discussion? This will also delete all replies.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteDiscussion(discussionId);
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete discussion");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const pinnedCount = discussions.filter((d) => d.isPinned).length;
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
-          <Text className="text-xl font-bold text-black">Discussion Forum</Text>
+        <VStack space="xs">
+          <Text style={styles.headerTitle}>Discussions</Text>
+          <Text style={styles.courseName}>
+            {courseDetails?.course?.name || "Loading..."}
+          </Text>
+        </VStack>
 
+        {isTeacherOrAdmin && (
           <TouchableOpacity
-            onPress={() => setShowSearch(!showSearch)}
-            style={styles.iconButton}
+            style={styles.filterButton}
+            onPress={() => setShowPinnedOnly(!showPinnedOnly)}
           >
-            <Icon
-              as={showSearch ? X : Search}
-              size="md"
-              className="text-black"
+            <Pin
+              size={20}
+              color={showPinnedOnly ? "#F59E0B" : "#6B7280"}
+              fill={showPinnedOnly ? "#F59E0B" : "transparent"}
             />
           </TouchableOpacity>
-        </HStack>
-
-        {/* Search Bar */}
-        {showSearch && (
-          <View style={styles.searchContainer}>
-            <Icon as={Search} size="md" className="text-gray-400" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search discussions..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Icon as={X} size="sm" className="text-gray-400" />
-              </TouchableOpacity>
-            )}
-          </View>
         )}
       </View>
 
-      {/* Content */}
+      {/* Stats Bar */}
+      <View style={styles.statsBar}>
+        <HStack space="lg">
+          <HStack space="xs" style={styles.statItem}>
+            <MessageSquare size={16} color="#6B7280" />
+            <Text style={styles.statText}>
+              {discussions.length} {discussions.length === 1 ? "topic" : "topics"}
+            </Text>
+          </HStack>
+          {pinnedCount > 0 && (
+            <HStack space="xs" style={styles.statItem}>
+              <Pin size={16} color="#F59E0B" />
+              <Text style={[styles.statText, { color: "#F59E0B" }]}>
+                {pinnedCount} pinned
+              </Text>
+            </HStack>
+          )}
+        </HStack>
+      </View>
+
+      {/* Discussion List */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => {}} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {/* Empty State */}
-        <View style={styles.emptyContainer}>
-          <MessageSquare size={48} color="#9CA3AF" />
-          <Text className="text-gray-500 text-center text-lg mt-4">
-            No discussions yet
-          </Text>
-          <Text className="text-gray-400 text-center text-sm mt-2">
-            Start a discussion to ask questions or share ideas
-          </Text>
-        </View>
-
-        {/* Create Thread Form */}
-        {showCreateThread && (
-          <View style={styles.createThreadCard}>
-            <VStack space="md">
-              <HStack className="justify-between items-center">
-                <Text className="text-lg font-bold text-black">
-                  New Discussion
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setShowCreateThread(false)}
-                >
-                  <Icon as={X} size="md" className="text-gray-500" />
-                </TouchableOpacity>
-              </HStack>
-
-              <TextInput
-                style={styles.input}
-                placeholder="Discussion title"
-                value={newThreadTitle}
-                onChangeText={setNewThreadTitle}
-                placeholderTextColor="#9CA3AF"
-              />
-
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Write your question or topic..."
-                value={newThreadContent}
-                onChangeText={setNewThreadContent}
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={6}
-              />
-
-              <TouchableOpacity
-                style={[styles.button, styles.buttonPrimary]}
-              >
-                <HStack space="xs" className="items-center">
-                  <Icon as={Send} size="sm" className="text-white" />
-                  <Text className="text-white font-semibold">Post</Text>
-                </HStack>
-              </TouchableOpacity>
-            </VStack>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading discussions...</Text>
           </View>
+        ) : discussions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <MessageSquare size={48} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>
+              {showPinnedOnly ? "No Pinned Discussions" : "No Discussions Yet"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {showPinnedOnly
+                ? "There are no pinned discussions in this course."
+                : "Be the first to start a discussion!"}
+            </Text>
+          </View>
+        ) : (
+          <VStack space="sm">
+            {discussions.map((discussion) => (
+              <DiscussionThreadCard
+                key={discussion.id}
+                discussion={discussion}
+                onPress={() =>
+                  router.push(
+                    `/(tabs)/academics/${courseInstanceId}/discussion/${discussion.id}`
+                  )
+                }
+                onTogglePin={() => handleTogglePin(discussion.id, discussion.isPinned || false)}
+                onDelete={() => handleDelete(discussion.id)}
+                showActions={isTeacherOrAdmin || discussion.createdBy === user?.uid}
+              />
+            ))}
+          </VStack>
         )}
-
-        <View style={{ height: 80 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* FAB */}
+      {/* FAB for Create */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => setShowCreateThread(true)}
-        activeOpacity={0.8}
+        onPress={() => setShowCreateModal(true)}
       >
-        <Icon as={Plus} size="xl" className="text-white" />
+        <Plus size={24} color="#FFFFFF" />
       </TouchableOpacity>
+
+      {/* Create Discussion Modal */}
+      <CreateDiscussionModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        courseInstanceId={courseInstanceId as string}
+        courseName={courseDetails?.course?.name || "Course"}
+        onDiscussionCreated={(discussionId) => {
+          router.push(
+            `/(tabs)/academics/${courseInstanceId}/discussion/${discussionId}`
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -157,32 +206,42 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F5F5",
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
   },
-  iconButton: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#000000",
+  },
+  courseName: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  filterButton: {
     padding: 8,
     borderRadius: 8,
     backgroundColor: "#F3F4F6",
   },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+  statsBar: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#000000",
+  statItem: {
+    alignItems: "center",
+  },
+  statText: {
+    fontSize: 14,
+    color: "#6B7280",
   },
   scrollView: {
     flex: 1,
@@ -190,64 +249,46 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
-  emptyContainer: {
-    padding: 48,
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  emptyState: {
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 60,
   },
-  createThreadCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 16,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    color: "#000000",
-    backgroundColor: "#F9FAFB",
-  },
-  textArea: {
-    height: 120,
-    textAlignVertical: "top",
-  },
-  button: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonPrimary: {
-    backgroundColor: "#000000",
+  emptyText: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 8,
+    textAlign: "center",
+    paddingHorizontal: 40,
   },
   fab: {
     position: "absolute",
-    bottom: 24,
-    right: 24,
+    right: 20,
+    bottom: 100,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: "#000000",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
 });
