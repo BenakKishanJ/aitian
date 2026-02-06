@@ -3,192 +3,98 @@ import {
   View,
   ScrollView,
   StyleSheet,
+  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  TouchableOpacity,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { Calendar, CheckCircle, XCircle, TrendingUp } from "lucide-react-native";
+import { Calendar, CheckCircle, XCircle, TrendingUp, Plus, Users } from "lucide-react-native";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/AuthContext";
+import { useAttendanceSession } from "@/lib/hooks/useAttendanceSession";
+import { StartAttendanceSessionModal } from "@/components/attendance/StartAttendanceSessionModal";
+import { AttendanceMarkingInterface } from "@/components/attendance/AttendanceMarkingInterface";
+import { AttendanceSessionCard } from "@/components/attendance/AttendanceSessionCard";
+import { useCourseDetails } from "@/lib/hooks/useCourseDetails";
 
 export default function AttendanceScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
     courseInstanceId: string;
   }>();
-  const { role } = useAuth();
-
-  const [loading, setLoading] = useState(false);
+  const { role, user } = useAuth();
+  const isTeacherOrAdmin = role === "teacher" || role === "admin";
+  
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [markingSessionId, setMarkingSessionId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Mock data - replace with actual hook
-  const attendanceData = {
-    totalClasses: 42,
-    attendedClasses: 38,
-    percentage: 90.48,
-    sessions: [
-      {
-        id: "1",
-        date: "2024-01-15",
-        status: "present",
-        topic: "Introduction to React",
-      },
-      {
-        id: "2",
-        date: "2024-01-18",
-        status: "present",
-        topic: "State Management",
-      },
-      {
-        id: "3",
-        date: "2024-01-22",
-        status: "absent",
-        topic: "Hooks Deep Dive",
-      },
-      {
-        id: "4",
-        date: "2024-01-25",
-        status: "present",
-        topic: "Context API",
-      },
-    ],
+  const {
+    sessions,
+    activeSession,
+    loading: sessionsLoading,
+    error: sessionsError,
+    startSession,
+    lockSession,
+    unlockSession,
+    deleteSession,
+    refresh: refreshSessions,
+  } = useAttendanceSession({
+    courseInstanceId: courseInstanceId as string,
+    date: selectedMonth,
+  });
+
+  const {
+    courseDetails,
+    loading: courseLoading,
+  } = useCourseDetails(courseInstanceId as string);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshSessions();
+    setRefreshing(false);
   };
 
-  const getAttendanceColor = (percentage: number) => {
-    if (percentage >= 75) return "#10B981";
-    if (percentage >= 60) return "#F59E0B";
-    return "#EF4444";
+  // Calculate stats from sessions
+  const calculateStats = () => {
+    // This would need actual attendance records
+    // For now, return placeholder stats
+    return {
+      totalClasses: sessions.length,
+      attendedClasses: 0,
+      percentage: 0,
+    };
   };
 
-  const getAttendanceStatus = (percentage: number) => {
-    if (percentage >= 75) return "Good Standing";
-    if (percentage >= 60) return "Warning";
-    return "At Risk";
-  };
+  const stats = calculateStats();
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+  // Student View - Calendar with attendance
+  const renderStudentView = () => {
+    const getAttendanceColor = (percentage: number) => {
+      if (percentage >= 75) return "#10B981";
+      if (percentage >= 60) return "#F59E0B";
+      return "#EF4444";
+    };
 
-    return { daysInMonth, startingDayOfWeek };
-  };
+    const getAttendanceStatus = (percentage: number) => {
+      if (percentage >= 75) return "Good Standing";
+      if (percentage >= 60) return "Warning";
+      return "At Risk";
+    };
 
-  const renderCalendar = () => {
-    const { daysInMonth, startingDayOfWeek } = getDaysInMonth(selectedMonth);
-    const weeks = [];
-    let days = [];
+    const attendanceColor = getAttendanceColor(stats.percentage);
+    const attendanceStatus = getAttendanceStatus(stats.percentage);
 
-    // Add empty cells for days before month starts
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(
-        <View key={`empty-${i}`} style={styles.calendarDay}>
-          <View style={styles.dayCell} />
-        </View>
-      );
-    }
-
-    // Add days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${selectedMonth.getFullYear()}-${String(
-        selectedMonth.getMonth() + 1
-      ).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-      const session = attendanceData.sessions.find((s) => s.date === dateStr);
-      const hasClass = session !== undefined;
-      const isPresent = session?.status === "present";
-
-      days.push(
-        <View key={day} style={styles.calendarDay}>
-          <View
-            style={[
-              styles.dayCell,
-              hasClass && styles.dayCellWithClass,
-              hasClass && isPresent && styles.dayCellPresent,
-              hasClass && !isPresent && styles.dayCellAbsent,
-            ]}
-          >
-            <Text
-              className={`text-sm ${
-                hasClass
-                  ? "text-white font-bold"
-                  : "text-gray-700"
-              }`}
-            >
-              {day}
-            </Text>
-          </View>
-        </View>
-      );
-
-      // Start new week
-      if ((startingDayOfWeek + day) % 7 === 0) {
-        weeks.push(
-          <View key={`week-${weeks.length}`} style={styles.calendarWeek}>
-            {days}
-          </View>
-        );
-        days = [];
-      }
-    }
-
-    // Add remaining days
-    if (days.length > 0) {
-      while (days.length < 7) {
-        days.push(
-          <View key={`empty-end-${days.length}`} style={styles.calendarDay}>
-            <View style={styles.dayCell} />
-          </View>
-        );
-      }
-      weeks.push(
-        <View key={`week-${weeks.length}`} style={styles.calendarWeek}>
-          {days}
-        </View>
-      );
-    }
-
-    return weeks;
-  };
-
-  const changeMonth = (direction: number) => {
-    setSelectedMonth((prev) => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + direction);
-      return newDate;
-    });
-  };
-
-  const attendanceColor = getAttendanceColor(attendanceData.percentage);
-  const attendanceStatus = getAttendanceStatus(attendanceData.percentage);
-
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text className="text-xl font-bold text-black px-4 py-3">
-          Attendance
-        </Text>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => {}} />
-        }
-      >
+    return (
+      <>
         {/* Summary Card */}
         <View style={styles.summaryCard}>
           <VStack space="lg">
-            {/* Percentage Circle */}
             <View style={styles.percentageContainer}>
               <View
                 style={[
@@ -200,16 +106,15 @@ export default function AttendanceScreen() {
                   className="text-5xl font-bold"
                   style={{ color: attendanceColor }}
                 >
-                  {attendanceData.percentage.toFixed(0)}%
+                  {stats.percentage.toFixed(0)}%
                 </Text>
               </View>
             </View>
 
-            {/* Status */}
             <VStack space="xs" className="items-center">
               <HStack space="xs" className="items-center">
                 <Icon
-                  as={attendanceData.percentage >= 75 ? CheckCircle : XCircle}
+                  as={stats.percentage >= 75 ? CheckCircle : XCircle}
                   size="md"
                   style={{ color: attendanceColor }}
                 />
@@ -221,16 +126,14 @@ export default function AttendanceScreen() {
                 </Text>
               </HStack>
               <Text className="text-sm text-gray-500">
-                {attendanceData.attendedClasses} / {attendanceData.totalClasses}{" "}
-                classes attended
+                {stats.attendedClasses} / {stats.totalClasses} classes attended
               </Text>
             </VStack>
 
-            {/* Stats Row */}
             <HStack className="justify-around">
               <VStack space="xs" className="items-center">
                 <Text className="text-2xl font-bold text-green-600">
-                  {attendanceData.attendedClasses}
+                  {stats.attendedClasses}
                 </Text>
                 <Text className="text-xs text-gray-500">Present</Text>
               </VStack>
@@ -239,7 +142,7 @@ export default function AttendanceScreen() {
 
               <VStack space="xs" className="items-center">
                 <Text className="text-2xl font-bold text-red-600">
-                  {attendanceData.totalClasses - attendanceData.attendedClasses}
+                  {stats.totalClasses - stats.attendedClasses}
                 </Text>
                 <Text className="text-xs text-gray-500">Absent</Text>
               </VStack>
@@ -248,7 +151,7 @@ export default function AttendanceScreen() {
 
               <VStack space="xs" className="items-center">
                 <Text className="text-2xl font-bold text-gray-700">
-                  {attendanceData.totalClasses}
+                  {stats.totalClasses}
                 </Text>
                 <Text className="text-xs text-gray-500">Total</Text>
               </VStack>
@@ -258,142 +161,43 @@ export default function AttendanceScreen() {
 
         {/* Calendar Card */}
         <View style={styles.card}>
-          <VStack space="md">
-            {/* Month Navigation */}
-            <HStack className="justify-between items-center">
-              <TouchableOpacity
-                onPress={() => changeMonth(-1)}
-                style={styles.monthButton}
-              >
-                <Text className="text-lg font-bold text-black">←</Text>
-              </TouchableOpacity>
-
-              <Text className="text-lg font-bold text-black">
-                {selectedMonth.toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </Text>
-
-              <TouchableOpacity
-                onPress={() => changeMonth(1)}
-                style={styles.monthButton}
-              >
-                <Text className="text-lg font-bold text-black">→</Text>
-              </TouchableOpacity>
-            </HStack>
-
-            {/* Calendar Header */}
-            <View style={styles.calendarHeader}>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <View key={day} style={styles.calendarHeaderDay}>
-                  <Text className="text-xs font-semibold text-gray-500">
-                    {day}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Calendar Grid */}
-            <VStack space="xs">{renderCalendar()}</VStack>
-
-            {/* Legend */}
-            <HStack space="md" className="justify-center mt-2">
-              <HStack space="xs" className="items-center">
-                <View style={[styles.legendDot, { backgroundColor: "#10B981" }]} />
-                <Text className="text-xs text-gray-600">Present</Text>
-              </HStack>
-              <HStack space="xs" className="items-center">
-                <View style={[styles.legendDot, { backgroundColor: "#EF4444" }]} />
-                <Text className="text-xs text-gray-600">Absent</Text>
-              </HStack>
-            </HStack>
-          </VStack>
+          <Text className="text-lg font-bold text-black mb-4">
+            Attendance Calendar
+          </Text>
+          <Text className="text-sm text-gray-500 text-center mb-4">
+            Attendance tracking coming soon with live data
+          </Text>
         </View>
 
-        {/* Recent Sessions */}
+        {/* Sessions List */}
         <View style={styles.card}>
           <Text className="text-lg font-bold text-black mb-4">
-            Recent Sessions
+            Class Sessions
           </Text>
-
-          <VStack space="sm">
-            {attendanceData.sessions.map((session) => (
-              <View key={session.id} style={styles.sessionCard}>
-                <HStack className="justify-between items-center">
-                  <HStack space="md" className="items-center flex-1">
-                    <View
-                      style={[
-                        styles.sessionIcon,
-                        {
-                          backgroundColor:
-                            session.status === "present"
-                              ? "#D1FAE5"
-                              : "#FEE2E2",
-                        },
-                      ]}
-                    >
-                      <Icon
-                        as={
-                          session.status === "present"
-                            ? CheckCircle
-                            : XCircle
-                        }
-                        size="md"
-                        style={{
-                          color:
-                            session.status === "present"
-                              ? "#10B981"
-                              : "#EF4444",
-                        }}
-                      />
-                    </View>
-
-                    <VStack space="xs" className="flex-1">
-                      <Text className="text-sm font-semibold text-black">
-                        {session.topic}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        {new Date(session.date).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </Text>
-                    </VStack>
-                  </HStack>
-
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor:
-                          session.status === "present"
-                            ? "#D1FAE5"
-                            : "#FEE2E2",
-                      },
-                    ]}
-                  >
-                    <Text
-                      className="text-xs font-semibold"
-                      style={{
-                        color:
-                          session.status === "present"
-                            ? "#10B981"
-                            : "#EF4444",
-                      }}
-                    >
-                      {session.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </HStack>
-              </View>
-            ))}
-          </VStack>
+          
+          {sessions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Calendar size={48} color="#D1D5DB" />
+              <Text style={styles.emptyTitle}>No Sessions Yet</Text>
+              <Text style={styles.emptyText}>
+                No attendance sessions have been recorded for this course.
+              </Text>
+            </View>
+          ) : (
+            <VStack space="sm">
+              {sessions.map((session) => (
+                <AttendanceSessionCard
+                  key={session.id}
+                  session={session}
+                  showActions={false}
+                />
+              ))}
+            </VStack>
+          )}
         </View>
 
         {/* Warning Message */}
-        {attendanceData.percentage < 75 && (
+        {stats.percentage < 75 && stats.totalClasses > 0 && (
           <View style={styles.warningCard}>
             <HStack space="md" className="items-start">
               <Icon as={TrendingUp} size="md" className="text-amber-600" />
@@ -402,21 +206,176 @@ export default function AttendanceScreen() {
                   Attendance Warning
                 </Text>
                 <Text className="text-sm text-amber-800">
-                  Your attendance is below 75%. You need to attend{" "}
-                  {Math.ceil(
-                    (0.75 * (attendanceData.totalClasses + 10) -
-                      attendanceData.attendedClasses) /
-                      0.25
-                  )}{" "}
-                  more classes to reach the minimum requirement.
+                  Your attendance is below 75%. Please attend classes regularly.
                 </Text>
               </VStack>
             </HStack>
           </View>
         )}
+      </>
+    );
+  };
 
+  // Teacher View - Session Management
+  const renderTeacherView = () => {
+    return (
+      <>
+        {/* Active Session Alert */}
+        {activeSession && (
+          <TouchableOpacity
+            style={styles.activeSessionBanner}
+            onPress={() => setMarkingSessionId(activeSession.id)}
+          >
+            <HStack space="md" className="items-center">
+              <View style={styles.activeIndicator} />
+              <VStack space="xs" className="flex-1">
+                <Text className="text-base font-bold text-white">
+                  Active Session: {activeSession.title}
+                </Text>
+                <Text className="text-sm text-gray-300">
+                  Tap to mark attendance
+                </Text>
+              </VStack>
+              <Icon as={Users} size="md" className="text-white" />
+            </HStack>
+          </TouchableOpacity>
+        )}
+
+        {/* Start New Session Button */}
+        {!activeSession && (
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={() => setShowStartModal(true)}
+          >
+            <HStack space="sm" className="items-center justify-center">
+              <Plus size={24} color="#FFFFFF" />
+              <Text className="text-lg font-semibold text-white">
+                Start Attendance Session
+              </Text>
+            </HStack>
+          </TouchableOpacity>
+        )}
+
+        {/* Sessions List */}
+        <View style={styles.card}>
+          <Text className="text-lg font-bold text-black mb-4">
+            Attendance Sessions
+          </Text>
+          
+          {sessionsLoading ? (
+            <ActivityIndicator size="large" color="#000000" />
+          ) : sessions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Calendar size={48} color="#D1D5DB" />
+              <Text style={styles.emptyTitle}>No Sessions Yet</Text>
+              <Text style={styles.emptyText}>
+                Start a new session to begin taking attendance
+              </Text>
+            </View>
+          ) : (
+            <VStack space="sm">
+              {sessions.map((session) => (
+                <AttendanceSessionCard
+                  key={session.id}
+                  session={session}
+                  onPress={() => setMarkingSessionId(session.id)}
+                  onLock={() => lockSession(session.id)}
+                  onUnlock={() => unlockSession(session.id)}
+                  onDelete={() => deleteSession(session.id)}
+                  showActions={true}
+                />
+              ))}
+            </VStack>
+          )}
+        </View>
+
+        {/* Instructions */}
+        <View style={styles.instructionsCard}>
+          <Text className="text-base font-semibold text-gray-800 mb-2">
+            How to Take Attendance
+          </Text>
+          <VStack space="xs">
+            <Text className="text-sm text-gray-600">
+              1. Tap "Start Attendance Session" to begin
+            </Text>
+            <Text className="text-sm text-gray-600">
+              2. Tap on a session to mark students present/absent
+            </Text>
+            <Text className="text-sm text-gray-600">
+              3. Use "Mark All Present/Absent" for quick marking
+            </Text>
+            <Text className="text-sm text-gray-600">
+              4. Lock the session when finished
+            </Text>
+          </VStack>
+        </View>
+      </>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <VStack space="xs">
+          <Text className="text-xl font-bold text-black">
+            Attendance
+          </Text>
+          <Text className="text-sm text-gray-500">
+            {courseDetails?.course?.name || "Loading..."}
+          </Text>
+        </VStack>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {isTeacherOrAdmin ? renderTeacherView() : renderStudentView()}
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* Start Session Modal */}
+      <StartAttendanceSessionModal
+        visible={showStartModal}
+        onClose={() => setShowStartModal(false)}
+        courseInstanceId={courseInstanceId as string}
+        courseName={courseDetails?.course?.name || "Course"}
+        onSessionStarted={(sessionId) => {
+          setMarkingSessionId(sessionId);
+        }}
+      />
+
+      {/* Marking Interface Modal */}
+      <Modal
+        visible={!!markingSessionId}
+        animationType="slide"
+        onRequestClose={() => setMarkingSessionId(null)}
+      >
+        <SafeAreaView style={styles.markingModal}>
+          <View style={styles.markingHeader}>
+            <TouchableOpacity
+              onPress={() => setMarkingSessionId(null)}
+              style={styles.closeButton}
+            >
+              <Text className="text-base font-semibold text-gray-600">Close</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-bold text-black">Mark Attendance</Text>
+            <View style={{ width: 50 }} />
+          </View>
+          
+          {markingSessionId && (
+            <AttendanceMarkingInterface
+              sessionId={markingSessionId}
+              courseInstanceId={courseInstanceId as string}
+              onClose={() => setMarkingSessionId(null)}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -430,6 +389,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   scrollView: {
     flex: 1,
@@ -443,10 +404,7 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
@@ -474,79 +432,55 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
   },
-  monthButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-    minWidth: 40,
-    alignItems: "center",
+  activeSessionBanner: {
+    backgroundColor: "#000000",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
-  calendarHeader: {
-    flexDirection: "row",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  calendarHeaderDay: {
-    flex: 1,
-    alignItems: "center",
-  },
-  calendarWeek: {
-    flexDirection: "row",
-  },
-  calendarDay: {
-    flex: 1,
-    aspectRatio: 1,
-    padding: 2,
-  },
-  dayCell: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-  },
-  dayCellWithClass: {
-    borderWidth: 2,
-  },
-  dayCellPresent: {
-    backgroundColor: "#10B981",
-    borderColor: "#10B981",
-  },
-  dayCellAbsent: {
-    backgroundColor: "#EF4444",
-    borderColor: "#EF4444",
-  },
-  legendDot: {
+  activeIndicator: {
     width: 12,
     height: 12,
     borderRadius: 6,
+    backgroundColor: "#10B981",
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
   },
-  sessionCard: {
-    padding: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+  startButton: {
+    backgroundColor: "#000000",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
-  sessionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  emptyState: {
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 40,
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 4,
+    textAlign: "center",
+  },
+  instructionsCard: {
+    backgroundColor: "#EFF6FF",
     borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
   warningCard: {
     backgroundColor: "#FEF3C7",
@@ -555,5 +489,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#FCD34D",
+  },
+  markingModal: {
+    flex: 1,
+    backgroundColor: "#F5F5F5",
+  },
+  markingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  closeButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
 });
