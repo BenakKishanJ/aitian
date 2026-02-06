@@ -33,6 +33,10 @@ npm run web
 # Run tests
 npm test
 npx jest --testPathPattern="ComponentName" --watch
+
+# Deploy Firestore Security Rules
+npm run firebase:login        # First time only
+npm run firebase:deploy:rules # Deploy rules to production
 ```
 
 ## Project Structure

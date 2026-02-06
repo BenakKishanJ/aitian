@@ -9,7 +9,10 @@
     "web": "expo start --web",
     "build": "expo export --platform web --output-dir dist",
     "build:preview": "expo export --platform web --output-dir dist",
-    "test": "jest --watchAll"
+    "test": "jest --watchAll",
+    "firebase:deploy:rules": "firebase deploy --only firestore:rules",
+    "firebase:emulators": "firebase emulators:start --only firestore",
+    "firebase:login": "firebase login"
   },
   "jest": {
     "preset": "jest-expo"
