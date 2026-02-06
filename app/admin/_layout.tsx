@@ -6,9 +6,11 @@ export default function AdminLayout() {
     <AdminRoute>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="users" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="dashboard" />
         <Stack.Screen name="courses" />
-        {/* Add more admin screens */}
+        <Stack.Screen name="events" />
       </Stack>
     </AdminRoute>
   );

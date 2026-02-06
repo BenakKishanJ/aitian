@@ -1,0 +1,461 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+
+    function isStudent() {
+      return isRole('student');
+    }
+
+    function isTeacher() {
+      return isRole('teacher');
+    }
+
+    function isParent() {
+      return isRole('parent');
+    }
+
+    function isAdmin() {
+      return isRole('admin');
+    }
+
+    function isTeacherOrAdmin() {
+      return isAuthenticated() && (isTeacher() || isAdmin());
+    }
+
+    function isSameDepartment(departmentId) {
+      return isAuthenticated() && getUserData().departmentId == departmentId;
+    }
+
+    function isEnrolledInCourse(courseInstanceId) {
+      return exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseInstanceId));
+    }
+
+    function isTeachingCourse(courseInstanceId) {
+      let courseInstance = get(/databases/$(database)/documents/courseInstances/$(courseInstanceId)).data;
+      return isAuthenticated() && courseInstance.teacherIds.hasAny([request.auth.uid]);
+    }
+
+    function isLinkedToStudent(studentId) {
+      return isParent() && getUserData().linkedStudentId == studentId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow users to read their own data
+      allow read: if isUser(userId) || 
+                    (isParent() && isLinkedToStudent(userId)) ||
+                    isAdmin();
+      
+      // Allow creation during registration
+      allow create: if isUser(userId) && 
+        request.resource.data.keys().hasAll(['uid', 'email', 'name', 'role', 'profileComplete', 'isActive', 'createdAt']) &&
+        request.resource.data.uid == userId &&
+        request.resource.data.role in ['student', 'teacher', 'parent', 'admin'];
+      
+      // Allow users to update their own profile (limited fields)
+      allow update: if isUser(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'photoURL', 'profileComplete', 'updatedAt']);
+      
+      // Admin can update any user
+      allow update: if isAdmin();
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // Departments Collection
+    match /departments/{departmentId} {
+      // Anyone authenticated can read departments
+      allow read: if isAuthenticated();
+      
+      // Only admin can create/update/delete
+      allow write: if isAdmin();
+    }
+
+    // Courses Collection (Base course definitions)
+    match /courses/{courseId} {
+      // Anyone authenticated can read courses
+      allow read: if isAuthenticated();
+      
+      // Only admin and teachers can create courses
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['courseCode', 'name', 'departmentId', 'semester', 'credits', 'isElective', 'createdBy', 'createdAt']);
+      
+      // Only admin and course creator can update
+      allow update: if isAdmin() || 
+        (isTeacher() && resource.data.createdBy == request.auth.uid);
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // Course Instances Collection
+    match /courseInstances/{instanceId} {
+      // Students can read if enrolled
+      // Teachers can read if teaching
+      // Parents can read if linked student is enrolled
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isEnrolledInCourse(instanceId) ||
+        isTeachingCourse(instanceId) ||
+        (isParent() && isLinkedToStudent(resource.data.enrollments[0]))
+      );
+      
+      // Teachers can create instances for their courses
+      // Admins can create any
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['courseId', 'departmentId', 'semester', 'section', 'teacherIds', 'enrollmentType', 'isActive']) &&
+        (isAdmin() || request.resource.data.teacherIds.hasAny([request.auth.uid]));
+      
+      // Teachers can update their own instances
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.teacherIds.hasAny([request.auth.uid]));
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // Enrollments Collection
+    match /enrollments/{enrollmentId} {
+      // Users can read their own enrollments
+      // Teachers can read enrollments for their courses
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.studentId == request.auth.uid ||
+        isTeachingCourse(resource.data.courseInstanceId)
+      );
+      
+      // Students can create their own enrollment for electives
+      // Teachers/Admins can create any enrollment
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (isStudent() && request.resource.data.studentId == request.auth.uid) ||
+        isTeacherOrAdmin()
+      );
+      
+      // Admins and teachers can update enrollments
+      allow update: if isTeacherOrAdmin();
+      
+      // Admins and teachers can delete enrollments
+      allow delete: if isTeacherOrAdmin();
+    }
+
+    // Calendar Events Collection
+    match /calendarEvents/{eventId} {
+      // Anyone authenticated can read events
+      // Filtered by app logic based on courseInstanceId
+      allow read: if isAuthenticated();
+      
+      // Teachers can create events for their courses
+      // Admins can create any events
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['title', 'type', 'createdBy', 'startTime', 'endTime', 'createdAt']) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.type in ['class', 'exam', 'assignment', 'personal'];
+      
+      // Teachers can update their own events
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.createdBy == request.auth.uid);
+      
+      // Teachers can delete their own events
+      // Admins can delete any
+      allow delete: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.createdBy == request.auth.uid);
+    }
+
+    // Materials Collection
+    match /materials/{materialId} {
+      // Anyone enrolled in the course can read materials
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isEnrolledInCourse(resource.data.courseInstanceId) ||
+        isTeachingCourse(resource.data.courseInstanceId)
+      );
+      
+      // Teachers can create materials for their courses
+      // Admins can create any
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['courseInstanceId', 'title', 'type', 'url', 'uploadedBy', 'uploadedAt']) &&
+        request.resource.data.uploadedBy == request.auth.uid &&
+        request.resource.data.type in ['pdf', 'video', 'link', 'document', 'other'];
+      
+      // Teachers can update their own materials
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.uploadedBy == request.auth.uid);
+      
+      // Teachers can delete their own materials
+      // Admins can delete any
+      allow delete: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.uploadedBy == request.auth.uid);
+    }
+
+    // Assignments Collection
+    match /assignments/{assignmentId} {
+      // Students enrolled in course can read
+      // Teachers teaching course can read
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isEnrolledInCourse(resource.data.courseInstanceId) ||
+        isTeachingCourse(resource.data.courseInstanceId)
+      );
+      
+      // Teachers can create assignments for their courses
+      // Admins can create any
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['courseInstanceId', 'title', 'description', 'dueDate', 'createdBy', 'createdAt']) &&
+        request.resource.data.createdBy == request.auth.uid;
+      
+      // Teachers can update their own assignments
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.createdBy == request.auth.uid);
+      
+      // Teachers can delete their own assignments
+      // Admins can delete any
+      allow delete: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.createdBy == request.auth.uid);
+    }
+
+    // Submissions Collection
+    match /submissions/{submissionId} {
+      // Students can read their own submissions
+      // Teachers can read submissions for their course assignments
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.studentId == request.auth.uid ||
+        isTeachingCourse(get(/databases/$(database)/documents/assignments/$(resource.data.assignmentId)).data.courseInstanceId)
+      );
+      
+      // Students can create submissions for themselves
+      allow create: if isStudent() &&
+        request.resource.data.keys().hasAll(['assignmentId', 'studentId', 'submittedAt']) &&
+        request.resource.data.studentId == request.auth.uid;
+      
+      // Teachers can update to add grades
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['grade', 'feedback', 'gradedBy', 'gradedAt']);
+      
+      // Students can delete their own submissions (if not graded)
+      allow delete: if isStudent() &&
+        resource.data.studentId == request.auth.uid &&
+        !resource.data.keys().hasAny(['grade']);
+    }
+
+    // Marks Collection
+    match /marks/{markId} {
+      // Students can read their own marks
+      // Teachers can read marks for their courses
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.studentId == request.auth.uid ||
+        isTeachingCourse(resource.data.courseInstanceId)
+      );
+      
+      // Teachers can create marks for their courses
+      // Admins can create any
+      allow create: if isTeacherOrAdmin();
+      
+      // Teachers can update marks for their courses
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || isTeachingCourse(resource.data.courseInstanceId));
+      
+      // Only admin can delete marks
+      allow delete: if isAdmin();
+    }
+
+    // Discussions Collection
+    match /discussions/{discussionId} {
+      // Anyone enrolled in course can read
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isEnrolledInCourse(resource.data.courseInstanceId) ||
+        isTeachingCourse(resource.data.courseInstanceId)
+      );
+      
+      // Enrolled students and teachers can create discussions
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['courseInstanceId', 'title', 'content', 'createdBy', 'createdAt']) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        (isEnrolledInCourse(request.resource.data.courseInstanceId) ||
+         isTeachingCourse(request.resource.data.courseInstanceId));
+      
+      // Creator can update their own discussion
+      // Teachers can update any in their course
+      // Admins can update any
+      allow update: if isAuthenticated() &&
+        (isAdmin() ||
+         resource.data.createdBy == request.auth.uid ||
+         (isTeachingCourse(resource.data.courseInstanceId) && 
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isPinned'])));
+      
+      // Creator can delete their own
+      // Teachers can delete any in their course
+      // Admins can delete any
+      allow delete: if isAuthenticated() &&
+        (isAdmin() ||
+         resource.data.createdBy == request.auth.uid ||
+         isTeachingCourse(resource.data.courseInstanceId));
+    }
+
+    // Discussion Replies Collection
+    match /discussionReplies/{replyId} {
+      // Anyone who can read the parent discussion can read replies
+      allow read: if isAuthenticated();
+      
+      // Enrolled users can reply
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['threadId', 'content', 'createdBy', 'createdAt']) &&
+        request.resource.data.createdBy == request.auth.uid;
+      
+      // Creator can update their own reply
+      allow update: if isAuthenticated() &&
+        resource.data.createdBy == request.auth.uid;
+      
+      // Creator or teachers can delete
+      allow delete: if isAuthenticated() &&
+        (resource.data.createdBy == request.auth.uid ||
+         isTeachingCourse(get(/databases/$(database)/documents/discussions/$(resource.data.threadId)).data.courseInstanceId));
+    }
+
+    // News Posts Collection
+    match /newsPosts/{postId} {
+      // Anyone authenticated can read
+      // Filtered by app logic based on targetAudience
+      allow read: if isAuthenticated();
+      
+      // Teachers and admins can create posts
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['content', 'postedBy', 'authorName', 'authorRole', 'targetAudience', 'createdAt']) &&
+        request.resource.data.postedBy == request.auth.uid;
+      
+      // Author can update their own post
+      // Admins can update any (including pinning)
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || 
+         resource.data.postedBy == request.auth.uid ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned']));
+      
+      // Author or admin can delete
+      allow delete: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.postedBy == request.auth.uid);
+    }
+
+    // Parent Links Collection
+    match /parentLinks/{linkId} {
+      // Users can read their own links
+      allow read: if isAuthenticated() &&
+        (resource.data.parentId == request.auth.uid ||
+         resource.data.studentId == request.auth.uid ||
+         isAdmin());
+      
+      // Parents can create link requests
+      // Students can create link requests
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['parentId', 'studentId', 'status', 'requestedAt', 'requestedBy']) &&
+        (request.resource.data.parentId == request.auth.uid ||
+         request.resource.data.studentId == request.auth.uid) &&
+        request.resource.data.status == 'pending';
+      
+      // Student can approve/reject link request
+      // Admin can update any
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'approvedAt', 'revokedAt']) &&
+        (isAdmin() ||
+         (resource.data.studentId == request.auth.uid && resource.data.status == 'pending'));
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // Attendance Sessions Collection
+    match /attendanceSessions/{sessionId} {
+      // Teachers can read sessions for their courses
+      // Students can read sessions for their enrolled courses
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeachingCourse(resource.data.courseInstanceId) ||
+        isEnrolledInCourse(resource.data.courseInstanceId)
+      );
+      
+      // Teachers can create sessions for their courses
+      // Admins can create any
+      allow create: if isTeacherOrAdmin() &&
+        request.resource.data.keys().hasAll(['eventId', 'courseInstanceId', 'startedBy', 'startedAt', 'isLocked']) &&
+        request.resource.data.startedBy == request.auth.uid &&
+        (isAdmin() || isTeachingCourse(request.resource.data.courseInstanceId));
+      
+      // Teachers can update their own sessions
+      // Admins can update any
+      allow update: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.startedBy == request.auth.uid);
+      
+      // Teachers can delete their own sessions
+      // Admins can delete any
+      allow delete: if isTeacherOrAdmin() &&
+        (isAdmin() || resource.data.startedBy == request.auth.uid);
+    }
+
+    // Attendance Records Collection
+    match /attendanceRecords/{recordId} {
+      // Students can read their own records
+      // Teachers can read records for their course sessions
+      // Admins can read all
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.studentId == request.auth.uid ||
+        isTeachingCourse(get(/databases/$(database)/documents/attendanceSessions/$(resource.data.sessionId)).data.courseInstanceId)
+      );
+      
+      // Students can mark themselves present (self-attendance)
+      // Teachers can mark any student
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['sessionId', 'studentId', 'status', 'markedBy', 'markedAt']) &&
+        (isAdmin() ||
+         (isStudent() && request.resource.data.studentId == request.auth.uid && request.resource.data.markedBy == 'student') ||
+         (isTeacher() && request.resource.data.markedBy == 'teacher'));
+      
+      // Teachers can update records
+      allow update: if isTeacherOrAdmin();
+      
+      // Teachers can delete records
+      allow delete: if isTeacherOrAdmin();
+    }
+
+    // Config Collection (Admin settings)
+    match /config/{configId} {
+      // Only admin can read/write config
+      allow read, write: if isAdmin();
+    }
+  }
+}
