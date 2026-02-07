@@ -28,6 +28,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { collection, query, orderBy, getDocs, deleteDoc, doc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { NewsPost } from "@/types";
+import { EditNewsModal } from "@/components/news/EditNewsModal";
 
 export default function AdminNewsScreen() {
   const { user, userData, role } = useAuth();
@@ -38,6 +39,8 @@ export default function AdminNewsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showPinnedOnly, setShowPinnedOnly] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingPost, setEditingPost] = useState<NewsPost | null>(null);
 
   const fetchPosts = async () => {
     try {
@@ -86,6 +89,11 @@ export default function AdminNewsScreen() {
         },
       ]
     );
+  };
+
+  const handleEdit = (post: NewsPost) => {
+    setEditingPost(post);
+    setShowEditModal(true);
   };
 
   useEffect(() => {
@@ -243,9 +251,7 @@ export default function AdminNewsScreen() {
                     Alert.alert("Post Options", "", [
                       {
                         text: "Edit",
-                        onPress: () => {
-                          // TODO: Navigate to edit post
-                        },
+                        onPress: () => handleEdit(post),
                       },
                       {
                         text: "Delete",
@@ -273,12 +279,28 @@ export default function AdminNewsScreen() {
                     {getTargetAudienceLabel(post)}
                   </Text>
                 </View>
-                {post.mediaUrls && post.mediaUrls.length > 0 && (
-                  <Text style={styles.mediaText}>
-                    {post.mediaUrls.length} image
-                    {post.mediaUrls.length > 1 ? "s" : ""}
-                  </Text>
-                )}
+                <HStack space="sm">
+                  {post.mediaUrls && post.mediaUrls.length > 0 && (
+                    <Text style={styles.mediaText}>
+                      {post.mediaUrls.length} image
+                      {post.mediaUrls.length > 1 ? "s" : ""}
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => handleEdit(post)}
+                  >
+                    <Edit3 size={16} color="#6B7280" />
+                    <Text style={styles.editButtonText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeletePost(post.id)}
+                  >
+                    <Trash2 size={16} color="#EF4444" />
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                </HStack>
               </View>
             </View>
           ))
@@ -293,6 +315,19 @@ export default function AdminNewsScreen() {
       >
         <Plus size={24} color="#FFFFFF" />
       </TouchableOpacity>
+
+      {/* Edit News Modal */}
+      <EditNewsModal
+        visible={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingPost(null);
+        }}
+        post={editingPost}
+        onPostUpdated={() => {
+          fetchPosts();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -472,6 +507,34 @@ const styles = StyleSheet.create({
   mediaText: {
     fontSize: 12,
     color: "#9CA3AF",
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: "#F3F4F6",
+    gap: 4,
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: "#FEE2E2",
+    gap: 4,
+  },
+  deleteButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#EF4444",
   },
   fab: {
     position: "absolute",
