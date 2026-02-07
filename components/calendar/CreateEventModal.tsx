@@ -198,8 +198,12 @@ export function CreateEventModal({
         courseInstanceId: selectedCourse,
         startTime: Timestamp.fromDate(startDateTime),
         endTime: Timestamp.fromDate(endDateTime),
-        isAttendanceEnabled: eventType === 'class' ? isAttendanceEnabled : undefined,
       };
+
+      // Only add isAttendanceEnabled for class events
+      if (eventType === 'class') {
+        eventData.isAttendanceEnabled = isAttendanceEnabled;
+      }
 
       if (isRecurring) {
         eventData.recurrenceRule = {

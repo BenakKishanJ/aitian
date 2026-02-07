@@ -17,7 +17,9 @@ import { useAuth } from "@/lib/AuthContext";
 import { useDiscussions } from "@/lib/hooks/useDiscussions";
 import { DiscussionThreadCard } from "@/components/discussion/DiscussionThreadCard";
 import { CreateDiscussionModal } from "@/components/discussion/CreateDiscussionModal";
+import { EditDiscussionModal } from "@/components/discussion/EditDiscussionModal";
 import { useCourseDetails } from "@/lib/hooks/useCourseDetails";
+import type { Discussion } from "@/types";
 
 export default function DiscussionsScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
@@ -28,6 +30,8 @@ export default function DiscussionsScreen() {
   const isTeacherOrAdmin = role === "teacher" || role === "admin";
   
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingDiscussion, setEditingDiscussion] = useState<Discussion | null>(null);
   const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -82,6 +86,11 @@ export default function DiscussionsScreen() {
         },
       ]
     );
+  };
+
+  const handleEdit = (discussion: Discussion) => {
+    setEditingDiscussion(discussion);
+    setShowEditModal(true);
   };
 
   const pinnedCount = discussions.filter((d) => d.isPinned).length;
@@ -168,6 +177,7 @@ export default function DiscussionsScreen() {
                 }
                 onTogglePin={() => handleTogglePin(discussion.id, discussion.isPinned || false)}
                 onDelete={() => handleDelete(discussion.id)}
+                onEdit={() => handleEdit(discussion)}
                 showActions={isTeacherOrAdmin || discussion.createdBy === user?.uid}
               />
             ))}
@@ -194,6 +204,21 @@ export default function DiscussionsScreen() {
           router.push(
             `/(tabs)/academics/${courseInstanceId}/discussion/${discussionId}`
           );
+        }}
+      />
+
+      {/* Edit Discussion Modal */}
+      <EditDiscussionModal
+        visible={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingDiscussion(null);
+        }}
+        discussion={editingDiscussion}
+        courseInstanceId={courseInstanceId as string}
+        courseName={courseDetails?.course?.name || "Course"}
+        onDiscussionUpdated={() => {
+          refresh();
         }}
       />
     </SafeAreaView>

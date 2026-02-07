@@ -178,12 +178,18 @@ export default function CalendarScreen() {
         courseName = course?.name;
       }
 
-      await addDoc(eventsRef, {
+      const eventDoc: any = {
         ...eventData,
-        courseName,
         createdBy: user?.uid,
         createdAt: Timestamp.now(),
-      });
+      };
+
+      // Only add courseName if it exists
+      if (courseName) {
+        eventDoc.courseName = courseName;
+      }
+
+      await addDoc(eventsRef, eventDoc);
 
       setShowCreateModal(false);
     } catch (error) {

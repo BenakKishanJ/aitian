@@ -308,14 +308,14 @@ service cloud.firestore {
          isTeachingCourse(request.resource.data.courseInstanceId));
       
       // Creator can update their own discussion
-      // Teachers can update any in their course
+      // Teachers can update any in their course (including content)
       // Admins can update any
       allow update: if isAuthenticated() &&
         (isAdmin() ||
          resource.data.createdBy == request.auth.uid ||
          (isTeachingCourse(resource.data.courseInstanceId) && 
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['isPinned'])));
+            .hasOnly(['isPinned', 'title', 'content', 'updatedAt'])));
       
       // Creator can delete their own
       // Teachers can delete any in their course

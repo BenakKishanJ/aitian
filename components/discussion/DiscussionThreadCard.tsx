@@ -15,6 +15,8 @@ import {
   GraduationCap,
   Shield,
   Clock,
+  Edit3,
+  Trash2,
 } from 'lucide-react-native';
 import type { Discussion } from '@/types';
 
@@ -23,6 +25,7 @@ interface DiscussionThreadCardProps {
   onPress?: () => void;
   onTogglePin?: () => void;
   onDelete?: () => void;
+  onEdit?: () => void;
   showActions?: boolean;
 }
 
@@ -31,6 +34,7 @@ export function DiscussionThreadCard({
   onPress,
   onTogglePin,
   onDelete,
+  onEdit,
   showActions = true,
 }: DiscussionThreadCardProps) {
   const formatTimeAgo = (timestamp: any) => {
@@ -171,6 +175,32 @@ export function DiscussionThreadCard({
             </Text>
           </TouchableOpacity>
         )}
+
+        {showActions && onEdit && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+          >
+            <Edit3 size={14} color="#6B7280" />
+            <Text style={styles.actionButtonText}>Edit</Text>
+          </TouchableOpacity>
+        )}
+
+        {showActions && onDelete && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.deleteButton]}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} color="#EF4444" />
+            <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
+          </TouchableOpacity>
+        )}
       </HStack>
     </TouchableOpacity>
   );
@@ -296,5 +326,25 @@ const styles = StyleSheet.create({
   },
   pinButtonTextActive: {
     color: '#FFFFFF',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
+    gap: 4,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  deleteButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  deleteButtonText: {
+    color: '#EF4444',
   },
 });
