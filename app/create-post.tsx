@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
-  Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -17,18 +17,11 @@ import {
   Calendar,
   Pin,
   Send,
+  FileText,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  doc,
-  getDoc,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-
-/* Gluestack UI Components */
+import { usePostUpload } from "@/lib/hooks/usePostUpload";
+import { FilePicker, type PickedFile } from "@/components/ui/FilePicker";
 import { Text } from "@/components/ui/text";
 import { Button, ButtonText, ButtonIcon } from "@/components/ui/button";
 import { VStack } from "@/components/ui/vstack";
@@ -57,11 +50,13 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Divider } from "@/components/ui/divider";
+import type { TargetAudience } from "@/types";
 
 type AudienceType = "all" | "department" | "semester" | "departmentSemester";
 
 const DEPARTMENTS = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "ISE"];
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
+const MAX_FILES = 5;
 
 export default function CreatePostScreen() {
   const { userData, role } = useAuth();
@@ -74,8 +69,17 @@ export default function CreatePostScreen() {
   const [selectedSemester, setSelectedSemester] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
-  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
-  const [posting, setPosting] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<PickedFile[]>([]);
+
+  const {
+    createPost,
+    isUploading,
+    uploadProgress,
+    currentFileIndex,
+    totalFiles,
+    error,
+    resetUpload,
+  } = usePostUpload();
 
   const isAdmin = role === "admin";
 
@@ -119,9 +123,8 @@ export default function CreatePostScreen() {
   const handlePost = async () => {
     if (!validateForm() || !userData) return;
 
-    setPosting(true);
     try {
-      const targetAudience: any = {
+      const targetAudience: TargetAudience = {
         type: audienceType,
       };
 
@@ -129,7 +132,7 @@ export default function CreatePostScreen() {
         audienceType === "department" ||
         audienceType === "departmentSemester"
       ) {
-        targetAudience.department = selectedDepartment;
+        targetAudience.departmentId = selectedDepartment;
       }
 
       if (
@@ -139,20 +142,16 @@ export default function CreatePostScreen() {
         targetAudience.semester = parseInt(selectedSemester);
       }
 
-      const postData = {
-        title: title.trim(),
-        content: content.trim(),
-        mediaUrls: mediaUrls,
-        postedBy: userData.uid,
-        authorName: userData.name,
-        authorRole: userData.role,
-        isAnonymous: isAnonymous,
-        isPinned: isAdmin ? isPinned : false,
-        targetAudience: targetAudience,
-        createdAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, "newsPosts"), postData);
+      await createPost(
+        {
+          title: title.trim(),
+          content: content.trim(),
+          isAnonymous,
+          isPinned: isAdmin ? isPinned : false,
+          targetAudience,
+        },
+        selectedFiles.length > 0 ? selectedFiles : undefined
+      );
 
       Alert.alert("Success", "Post created successfully", [
         {
@@ -160,25 +159,48 @@ export default function CreatePostScreen() {
           onPress: () => router.back(),
         },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating post:", error);
-      Alert.alert("Error", "Failed to create post. Please try again.");
-    } finally {
-      setPosting(false);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to create post. Please try again."
+      );
     }
   };
 
-  const handleAddMedia = () => {
-    // Placeholder for image picker - will implement actual upload later
-    Alert.alert(
-      "Media Upload",
-      "Image/Video upload feature coming soon!\n\nFor now, you can add image URLs manually in the next update.",
-      [{ text: "OK" }],
-    );
+  const handleFilesSelected = (files: PickedFile[]) => {
+    // Check total file limit
+    const totalFiles = selectedFiles.length + files.length;
+    if (totalFiles > MAX_FILES) {
+      Alert.alert(
+        "Too Many Files",
+        `You can only upload up to ${MAX_FILES} files per post.`
+      );
+      return;
+    }
+    setSelectedFiles([...selectedFiles, ...files]);
   };
 
-  const handleRemoveMedia = (index: number) => {
-    setMediaUrls(mediaUrls.filter((_, i) => i !== index));
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith("image/")) {
+      return <ImageIcon size={20} color="#10B981" />;
+    }
+    if (mimeType.startsWith("video/")) {
+      return <Icon as={ImageIcon} size="sm" className="text-purple-500" />;
+    }
+    return <FileText size={20} color="#3B82F6" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return "";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   return (
@@ -196,13 +218,13 @@ export default function CreatePostScreen() {
           </HStack>
           <Button
             onPress={handlePost}
-            disabled={posting}
+            disabled={isUploading}
             size="sm"
             className="bg-white"
           >
             <ButtonIcon as={Send} className="text-black" />
             <ButtonText className="text-black font-semibold ml-1">
-              {posting ? "Posting..." : "Post"}
+              {isUploading ? "Posting..." : "Post"}
             </ButtonText>
           </Button>
         </HStack>
@@ -222,6 +244,7 @@ export default function CreatePostScreen() {
                 placeholder="Enter post title..."
                 className="text-black"
                 maxLength={100}
+                editable={!isUploading}
               />
             </Input>
             <Text className="text-xs text-gray-500">
@@ -243,6 +266,7 @@ export default function CreatePostScreen() {
                 multiline
                 numberOfLines={6}
                 maxLength={1000}
+                editable={!isUploading}
               />
             </Textarea>
             <Text className="text-xs text-gray-500">
@@ -253,33 +277,75 @@ export default function CreatePostScreen() {
           {/* Media Section */}
           <VStack space="sm">
             <Text className="text-sm font-semibold text-gray-700">
-              Media <Text className="text-gray-400">(Optional)</Text>
-            </Text>
-            <TouchableOpacity
-              onPress={handleAddMedia}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 items-center"
-            >
-              <Icon as={ImageIcon} size="lg" className="text-gray-400 mb-2" />
-              <Text className="text-gray-600 text-sm">
-                Add Images or Videos
+              Attachments{" "}
+              <Text className="text-gray-400">
+                ({selectedFiles.length}/{MAX_FILES})
               </Text>
-              <Text className="text-gray-400 text-xs mt-1">Coming soon</Text>
-            </TouchableOpacity>
+            </Text>
 
-            {mediaUrls.length > 0 && (
+            {isUploading ? (
+              <View className="bg-gray-50 rounded-lg p-6 items-center">
+                <ActivityIndicator size="large" color="#000000" />
+                <Text className="text-gray-700 mt-3 font-medium">
+                  Uploading files...
+                </Text>
+                {totalFiles > 0 && (
+                  <Text className="text-gray-500 text-sm mt-1">
+                    File {currentFileIndex} of {totalFiles}
+                  </Text>
+                )}
+                <View className="w-full bg-gray-200 rounded-full h-2 mt-3">
+                  <View
+                    className="bg-black h-2 rounded-full"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </View>
+                <Text className="text-gray-500 text-xs mt-2">
+                  {Math.round(uploadProgress)}%
+                </Text>
+              </View>
+            ) : (
+              <FilePicker
+                onFileSelect={(file) => handleFilesSelected([file])}
+                onMultipleSelect={handleFilesSelected}
+                selectedFiles={selectedFiles}
+                allowMultiple={true}
+                disabled={isUploading}
+                fileType="any"
+                label="Add Photos, Videos, or Documents"
+                maxSizeMB={10}
+              />
+            )}
+
+            {/* Selected Files List */}
+            {selectedFiles.length > 0 && !isUploading && (
               <VStack space="xs" className="mt-2">
-                {mediaUrls.map((url, index) => (
+                {selectedFiles.map((file, index) => (
                   <HStack
                     key={index}
                     className="items-center justify-between bg-gray-100 rounded-lg p-3"
                   >
-                    <Text
-                      className="text-sm text-gray-700 flex-1"
-                      numberOfLines={1}
+                    <HStack space="sm" className="items-center flex-1">
+                      {getFileIcon(file.mimeType)}
+                      <VStack className="flex-1">
+                        <Text
+                          className="text-sm text-gray-700 font-medium"
+                          numberOfLines={1}
+                        >
+                          {file.name}
+                        </Text>
+                        {file.size > 0 && (
+                          <Text className="text-xs text-gray-500">
+                            {formatFileSize(file.size)}
+                          </Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveFile(index)}
+                      disabled={isUploading}
+                      className="p-1"
                     >
-                      {url}
-                    </Text>
-                    <TouchableOpacity onPress={() => handleRemoveMedia(index)}>
                       <Icon as={X} size="sm" className="text-gray-600" />
                     </TouchableOpacity>
                   </HStack>
@@ -299,9 +365,12 @@ export default function CreatePostScreen() {
               </Text>
             </HStack>
 
-            <RadioGroup value={audienceType} onChange={setAudienceType}>
+            <RadioGroup
+              value={audienceType}
+              onChange={(value) => setAudienceType(value as AudienceType)}
+            >
               <VStack space="sm">
-                <Radio value="all">
+                <Radio value="all" isDisabled={isUploading}>
                   <RadioIndicator>
                     <RadioIcon />
                   </RadioIndicator>
@@ -310,7 +379,7 @@ export default function CreatePostScreen() {
                   </RadioLabel>
                 </Radio>
 
-                <Radio value="department">
+                <Radio value="department" isDisabled={isUploading}>
                   <RadioIndicator>
                     <RadioIcon />
                   </RadioIndicator>
@@ -319,7 +388,7 @@ export default function CreatePostScreen() {
                   </RadioLabel>
                 </Radio>
 
-                <Radio value="semester">
+                <Radio value="semester" isDisabled={isUploading}>
                   <RadioIndicator>
                     <RadioIcon />
                   </RadioIndicator>
@@ -328,7 +397,7 @@ export default function CreatePostScreen() {
                   </RadioLabel>
                 </Radio>
 
-                <Radio value="departmentSemester">
+                <Radio value="departmentSemester" isDisabled={isUploading}>
                   <RadioIndicator>
                     <RadioIcon />
                   </RadioIndicator>
@@ -351,6 +420,7 @@ export default function CreatePostScreen() {
                 <Select
                   selectedValue={selectedDepartment}
                   onValueChange={setSelectedDepartment}
+                  isDisabled={isUploading}
                 >
                   <SelectTrigger variant="outline" size="md">
                     <SelectInput
@@ -384,6 +454,7 @@ export default function CreatePostScreen() {
                 <Select
                   selectedValue={selectedSemester}
                   onValueChange={setSelectedSemester}
+                  isDisabled={isUploading}
                 >
                   <SelectTrigger variant="outline" size="md">
                     <SelectInput
@@ -433,6 +504,7 @@ export default function CreatePostScreen() {
               <Switch
                 value={isAnonymous}
                 onValueChange={setIsAnonymous}
+                disabled={isUploading}
                 trackColor={{ false: "#d1d5db", true: "#000000" }}
                 thumbColor={isAnonymous ? "#ffffff" : "#f3f4f6"}
               />
@@ -455,6 +527,7 @@ export default function CreatePostScreen() {
                 <Switch
                   value={isPinned}
                   onValueChange={setIsPinned}
+                  disabled={isUploading}
                   trackColor={{ false: "#d1d5db", true: "#000000" }}
                   thumbColor={isPinned ? "#ffffff" : "#f3f4f6"}
                 />
@@ -479,7 +552,13 @@ export default function CreatePostScreen() {
               {content.trim() && (
                 <Text className="text-gray-700 text-sm">{content.trim()}</Text>
               )}
-              {!title.trim() && !content.trim() && (
+              {selectedFiles.length > 0 && (
+                <Text className="text-gray-500 text-xs">
+                  {selectedFiles.length} file
+                  {selectedFiles.length !== 1 ? "s" : ""} attached
+                </Text>
+              )}
+              {!title.trim() && !content.trim() && selectedFiles.length === 0 && (
                 <Text className="text-gray-400 text-sm italic">
                   Your post preview will appear here...
                 </Text>

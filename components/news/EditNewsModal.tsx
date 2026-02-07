@@ -9,13 +9,16 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Image,
 } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { X, Edit3, Pin, Info, Users } from 'lucide-react-native';
+import { X, Edit3, Pin, Info, Users, FileText, Image as ImageIcon, Video } from 'lucide-react-native';
 import { useNews } from '@/lib/hooks/useNews';
-import type { NewsPost, NewsPostUpdateData } from '@/types';
+import { usePostUpload } from '@/lib/hooks/usePostUpload';
+import { FilePicker, type PickedFile } from '@/components/ui/FilePicker';
+import type { NewsPost, NewsPostUpdateData, MediaAttachment } from '@/types';
 
 interface EditNewsModalProps {
   visible: boolean;
@@ -23,6 +26,8 @@ interface EditNewsModalProps {
   post: NewsPost | null;
   onPostUpdated?: () => void;
 }
+
+const MAX_FILES = 5;
 
 export function EditNewsModal({
   visible,
@@ -33,8 +38,12 @@ export function EditNewsModal({
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [isPinned, setIsPinned] = useState(false);
+  const [existingMedia, setExistingMedia] = useState<MediaAttachment[]>([]);
+  const [newFiles, setNewFiles] = useState<PickedFile[]>([]);
+  const [mediaToDelete, setMediaToDelete] = useState<MediaAttachment[]>([]);
   
   const { updatePost, updating } = useNews();
+  const { uploadMediaFiles, deleteMediaFiles, isUploading, error: uploadError } = usePostUpload();
 
   // Load post data when modal opens
   useEffect(() => {
@@ -42,6 +51,9 @@ export function EditNewsModal({
       setTitle(post.title || '');
       setContent(post.content || '');
       setIsPinned(post.isPinned || false);
+      setExistingMedia(post.media || []);
+      setNewFiles([]);
+      setMediaToDelete([]);
     }
   }, [post, visible]);
 
@@ -67,10 +79,29 @@ export function EditNewsModal({
     }
 
     try {
+      // Upload new files first if any
+      let updatedMedia = [...existingMedia];
+      
+      if (newFiles.length > 0) {
+        const uploadedMedia = await uploadMediaFiles(newFiles);
+        updatedMedia = [...updatedMedia, ...uploadedMedia];
+      }
+
+      // Delete removed media files from storage
+      if (mediaToDelete.length > 0) {
+        const storagePaths = mediaToDelete
+          .filter(m => m.storagePath)
+          .map(m => m.storagePath);
+        if (storagePaths.length > 0) {
+          await deleteMediaFiles(storagePaths);
+        }
+      }
+
       const updateData: NewsPostUpdateData = {
         title: title.trim(),
         content: content.trim(),
         isPinned,
+        media: updatedMedia,
       };
 
       await updatePost(post.id, updateData);
@@ -86,6 +117,51 @@ export function EditNewsModal({
   const handleClose = () => {
     onClose();
   };
+
+  const handleRemoveExistingMedia = (index: number) => {
+    const media = existingMedia[index];
+    setMediaToDelete([...mediaToDelete, media]);
+    setExistingMedia(existingMedia.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveNewFile = (index: number) => {
+    setNewFiles(newFiles.filter((_, i) => i !== index));
+  };
+
+  const handleAddFiles = (files: PickedFile[]) => {
+    const totalFiles = existingMedia.length + newFiles.length + files.length;
+    if (totalFiles > MAX_FILES) {
+      Alert.alert(
+        'Too Many Files',
+        `You can only have up to ${MAX_FILES} files per post.`
+      );
+      return;
+    }
+    setNewFiles([...newFiles, ...files]);
+  };
+
+  const isImageFile = (mimeType: string) => mimeType.startsWith('image/');
+  const isVideoFile = (mimeType: string) => mimeType.startsWith('video/');
+
+  const getFileIcon = (mimeType: string) => {
+    if (isImageFile(mimeType)) {
+      return <ImageIcon size={20} color="#10B981" />;
+    }
+    if (isVideoFile(mimeType)) {
+      return <Video size={20} color="#8B5CF6" />;
+    }
+    return <FileText size={20} color="#3B82F6" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes || bytes === 0) return '';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const isProcessing = updating || isUploading;
 
   if (!post) return null;
 
@@ -116,7 +192,7 @@ export function EditNewsModal({
                 value={title}
                 onChangeText={setTitle}
                 maxLength={100}
-                editable={!updating}
+                editable={!isProcessing}
               />
               <Text style={styles.charCount}>{title.length}/100</Text>
             </VStack>
@@ -132,9 +208,100 @@ export function EditNewsModal({
                 multiline
                 textAlignVertical="top"
                 numberOfLines={8}
-                editable={!updating}
+                editable={!isProcessing}
               />
             </VStack>
+
+            {/* Existing Media */}
+            {existingMedia.length > 0 && (
+              <VStack space="sm" style={styles.inputGroup}>
+                <Text style={styles.label}>Current Attachments</Text>
+                <VStack space="xs">
+                  {existingMedia.map((media, index) => (
+                    <View key={index} style={styles.mediaItem}>
+                      <HStack space="sm" style={styles.mediaItemContent}>
+                        {isImageFile(media.mimeType) ? (
+                          <Image
+                            source={{ uri: media.url }}
+                            style={styles.mediaThumbnail}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          getFileIcon(media.mimeType)
+                        )}
+                        <VStack style={styles.mediaInfo}>
+                          <Text style={styles.mediaName} numberOfLines={1}>
+                            {media.fileName || 'Attachment'}
+                          </Text>
+                          {media.fileSize > 0 && (
+                            <Text style={styles.mediaSize}>
+                              {formatFileSize(media.fileSize)}
+                            </Text>
+                          )}
+                        </VStack>
+                        <TouchableOpacity
+                          style={styles.removeButton}
+                          onPress={() => handleRemoveExistingMedia(index)}
+                          disabled={isProcessing}
+                        >
+                          <X size={18} color="#EF4444" />
+                        </TouchableOpacity>
+                      </HStack>
+                    </View>
+                  ))}
+                </VStack>
+              </VStack>
+            )}
+
+            {/* New Files to Upload */}
+            {newFiles.length > 0 && (
+              <VStack space="sm" style={styles.inputGroup}>
+                <Text style={styles.label}>New Files to Upload</Text>
+                <VStack space="xs">
+                  {newFiles.map((file, index) => (
+                    <View key={index} style={styles.mediaItem}>
+                      <HStack space="sm" style={styles.mediaItemContent}>
+                        {getFileIcon(file.mimeType)}
+                        <VStack style={styles.mediaInfo}>
+                          <Text style={styles.mediaName} numberOfLines={1}>
+                            {file.name}
+                          </Text>
+                          {file.size > 0 && (
+                            <Text style={styles.mediaSize}>
+                              {formatFileSize(file.size)}
+                            </Text>
+                          )}
+                        </VStack>
+                        <TouchableOpacity
+                          style={styles.removeButton}
+                          onPress={() => handleRemoveNewFile(index)}
+                          disabled={isProcessing}
+                        >
+                          <X size={18} color="#EF4444" />
+                        </TouchableOpacity>
+                      </HStack>
+                    </View>
+                  ))}
+                </VStack>
+              </VStack>
+            )}
+
+            {/* Add New Files */}
+            {(existingMedia.length + newFiles.length) < MAX_FILES && (
+              <VStack space="sm" style={styles.inputGroup}>
+                <Text style={styles.label}>
+                  Add Attachments ({existingMedia.length + newFiles.length}/{MAX_FILES})
+                </Text>
+                <FilePicker
+                  onFileSelect={(file) => handleAddFiles([file])}
+                  onMultipleSelect={handleAddFiles}
+                  disabled={isProcessing}
+                  fileType="any"
+                  label="Add Photos, Videos, or Documents"
+                  maxSizeMB={10}
+                />
+              </VStack>
+            )}
 
             {/* Pin Toggle */}
             <View style={styles.toggleContainer}>
@@ -149,7 +316,7 @@ export function EditNewsModal({
                 <Switch
                   value={isPinned}
                   onValueChange={setIsPinned}
-                  disabled={updating}
+                  disabled={isProcessing}
                   trackColor={{ false: '#E5E7EB', true: '#000000' }}
                   thumbColor="#FFFFFF"
                 />
@@ -166,6 +333,7 @@ export function EditNewsModal({
                 <Text style={styles.noticeItem}>• Changes will be saved immediately</Text>
                 <Text style={styles.noticeItem}>• Original author and timestamp will be preserved</Text>
                 <Text style={styles.noticeItem}>• Target audience cannot be changed</Text>
+                <Text style={styles.noticeItem}>• Removed files will be permanently deleted</Text>
               </VStack>
             </View>
 
@@ -193,7 +361,7 @@ export function EditNewsModal({
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={handleClose}
-              disabled={updating}
+              disabled={isProcessing}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -201,12 +369,12 @@ export function EditNewsModal({
             <TouchableOpacity
               style={[
                 styles.updateButton,
-                ((!title.trim() && !content.trim()) || updating) && styles.updateButtonDisabled,
+                ((!title.trim() && !content.trim()) || isProcessing) && styles.updateButtonDisabled,
               ]}
               onPress={handleUpdate}
-              disabled={(!title.trim() && !content.trim()) || updating}
+              disabled={(!title.trim() && !content.trim()) || isProcessing}
             >
-              {updating ? (
+              {isProcessing ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
@@ -290,6 +458,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     minHeight: 150,
     textAlignVertical: 'top',
+  },
+  mediaItem: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  mediaItemContent: {
+    alignItems: 'center',
+  },
+  mediaThumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: 4,
+  },
+  mediaInfo: {
+    flex: 1,
+  },
+  mediaName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#000000',
+  },
+  mediaSize: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  removeButton: {
+    padding: 4,
   },
   toggleContainer: {
     backgroundColor: '#F9FAFB',

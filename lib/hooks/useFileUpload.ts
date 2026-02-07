@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import {
   ref,
-  uploadBytesResumable,
+  uploadBytes,
   getDownloadURL,
   deleteObject,
 } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
+import * as FileSystem from 'expo-file-system';
 
 export type UploadFolder =
   | 'materials'
@@ -35,16 +36,61 @@ export interface UploadedFile {
   type: string;
 }
 
+/**
+ * Universal file type that works with both web File and native PickedFile
+ */
+export interface UploadableFile {
+  name: string;
+  size: number;
+  type: string;
+  // For native files, we need the URI to fetch the blob
+  uri?: string;
+}
+
+/**
+ * Convert base64 to Blob for upload
+ */
+const base64ToBlob = async (base64: string, mimeType: string): Promise<Blob> => {
+  // Remove data URL prefix if present
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+
+  // Decode base64 to binary string
+  const byteCharacters = atob(base64Data);
+  const byteNumbers = new Array(byteCharacters.length);
+
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
+};
+
+/**
+ * Fetch file as blob from URI (works for both platforms)
+ */
+const fetchFileAsBlob = async (uri: string, mimeType: string): Promise<Blob> => {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  // Ensure the blob has the correct MIME type
+  if (blob.type !== mimeType) {
+    return new Blob([blob], { type: mimeType });
+  }
+
+  return blob;
+};
+
 export function useFileUpload(options: UseFileUploadOptions) {
   const { folder, maxSizeMB = 50, allowedTypes } = options;
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const validateFile = (file: File): string | null => {
-    // Check file size
+  const validateFile = (file: UploadableFile): string | null => {
+    // Check file size (if known)
     const maxSizeBytes = maxSizeMB * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
+    if (file.size > 0 && file.size > maxSizeBytes) {
       return `File size exceeds ${maxSizeMB}MB limit`;
     }
 
@@ -68,24 +114,17 @@ export function useFileUpload(options: UseFileUploadOptions) {
   };
 
   const uploadFile = useCallback(
-    async (file: File, fileName?: string): Promise<UploadedFile> => {
-      return new Promise((resolve, reject) => {
+    async (file: UploadableFile, fileName?: string): Promise<UploadedFile> => {
+      try {
         // Validate file
         const validationError = validateFile(file);
         if (validationError) {
           setError(validationError);
-          reject(new Error(validationError));
-          return;
+          throw new Error(validationError);
         }
 
         setIsUploading(true);
         setError(null);
-        setProgress({
-          progress: 0,
-          state: 'running',
-          bytesTransferred: 0,
-          totalBytes: file.size,
-        });
 
         // Generate unique filename
         const timestamp = Date.now();
@@ -93,72 +132,69 @@ export function useFileUpload(options: UseFileUploadOptions) {
         const storagePath = `${folder}/${uniqueFileName}`;
         const storageRef = ref(storage, storagePath);
 
-        // Start upload
-        const uploadTask = uploadBytesResumable(storageRef, file);
+        let downloadURL: string;
+        let finalSize = file.size || 0;
+        let finalType = file.type;
+        let blob: Blob;
 
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress =
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setProgress({
-              progress,
-              state: snapshot.state,
-              bytesTransferred: snapshot.bytesTransferred,
-              totalBytes: snapshot.totalBytes,
-            });
-          },
-          (error) => {
-            setIsUploading(false);
-            setProgress(null);
-            let errorMessage = 'Upload failed';
+        // Handle web File objects
+        if (file instanceof File) {
+          setProgress({
+            progress: 0,
+            state: 'running',
+            bytesTransferred: 0,
+            totalBytes: file.size,
+          });
 
-            switch (error.code) {
-              case 'storage/unauthorized':
-                errorMessage = 'You do not have permission to upload files';
-                break;
-              case 'storage/canceled':
-                errorMessage = 'Upload was cancelled';
-                break;
-              case 'storage/quota-exceeded':
-                errorMessage = 'Storage quota exceeded';
-                break;
-              case 'storage/invalid-checksum':
-                errorMessage = 'File verification failed';
-                break;
-              default:
-                errorMessage = error.message;
-            }
+          blob = file;
+          finalSize = file.size;
+          finalType = file.type;
+        } else if (file.uri) {
+          // Native file - use fetch to get blob
+          setProgress({
+            progress: 0,
+            state: 'running',
+            bytesTransferred: 0,
+            totalBytes: file.size,
+          });
 
-            setError(errorMessage);
-            reject(new Error(errorMessage));
-          },
-          async () => {
-            try {
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              setIsUploading(false);
-              setProgress({
-                progress: 100,
-                state: 'success',
-                bytesTransferred: file.size,
-                totalBytes: file.size,
-              });
+          // Fetch the file as a blob
+          blob = await fetchFileAsBlob(file.uri, file.type);
+          finalSize = blob.size || file.size || 0;
+          finalType = blob.type || file.type;
+        } else {
+          throw new Error('File must have either a File object or uri property');
+        }
 
-              resolve({
-                url: downloadURL,
-                path: storagePath,
-                name: file.name,
-                size: file.size,
-                type: file.type,
-              });
-            } catch (err: any) {
-              setIsUploading(false);
-              setError(err.message || 'Failed to get download URL');
-              reject(err);
-            }
-          }
-        );
-      });
+        // Upload blob
+        await uploadBytes(storageRef, blob, {
+          contentType: finalType,
+        });
+
+        downloadURL = await getDownloadURL(storageRef);
+
+        setIsUploading(false);
+        setProgress({
+          progress: 100,
+          state: 'success',
+          bytesTransferred: finalSize,
+          totalBytes: finalSize,
+        });
+
+        return {
+          url: downloadURL,
+          path: storagePath,
+          name: file.name,
+          size: finalSize,
+          type: finalType,
+        };
+      } catch (err: any) {
+        setIsUploading(false);
+        console.error('Upload error:', err);
+        const errorMessage = err.message || 'Failed to upload file';
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
     },
     [folder, maxSizeMB, allowedTypes]
   );

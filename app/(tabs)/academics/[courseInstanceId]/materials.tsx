@@ -17,7 +17,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useMaterials } from "@/lib/hooks/useMaterials";
 import { useMaterialUpload } from "@/lib/hooks/useMaterialUpload";
 import { MaterialCard } from "@/components/academics/MaterialCard";
-import { FilePicker } from "@/components/ui/FilePicker";
+import { FilePicker, type PickedFile } from "@/components/ui/FilePicker";
 import { UploadProgressBar } from "@/components/ui/UploadProgress";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
@@ -45,7 +45,7 @@ export default function MaterialsScreen() {
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadFileSize, setUploadFileSize] = useState("");
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<PickedFile | null>(null);
 
   const {
     materials,

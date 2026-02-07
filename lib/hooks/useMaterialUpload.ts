@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
 import { useAuth } from '@/lib/AuthContext';
-import { useFileUpload, type UploadedFile } from './useFileUpload';
+import { useFileUpload, type UploadedFile, type UploadableFile } from './useFileUpload';
 import type { MaterialType } from '@/types';
 
 interface UploadMaterialOptions {
@@ -51,7 +51,7 @@ export function useMaterialUpload() {
 
   const uploadMaterial = useCallback(
     async (
-      file: File,
+      file: UploadableFile,
       options: UploadMaterialOptions
     ): Promise<string> => {
       if (!user) {

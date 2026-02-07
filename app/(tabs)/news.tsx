@@ -7,6 +7,8 @@ import {
   FlatList,
   Image,
   Dimensions,
+  Linking,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -18,6 +20,11 @@ import {
   Filter,
   BookOpen,
   Calendar,
+  FileText,
+  Image as ImageIcon,
+  Video,
+  Download,
+  ExternalLink,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import {
@@ -40,22 +47,20 @@ import { Icon } from "@/components/ui/icon";
 import { Badge, BadgeText } from "@/components/ui/badge";
 import { Avatar, AvatarFallbackText } from "@/components/ui/avatar";
 import { Heading } from "@/components/ui/heading";
+import type { MediaAttachment, TargetAudience } from "@/types";
 
 interface NewsPost {
   id: string;
   title: string;
   content: string;
-  mediaUrls: string[];
+  mediaUrls?: string[];
+  media?: MediaAttachment[];
   postedBy: string;
   authorName: string;
   authorRole: string;
   isAnonymous: boolean;
   isPinned: boolean;
-  targetAudience: {
-    type: "all" | "department" | "semester" | "departmentSemester";
-    department?: string;
-    semester?: number;
-  };
+  targetAudience: TargetAudience;
   createdAt: Timestamp | Date;
 }
 
@@ -94,6 +99,7 @@ export default function NewsScreen() {
           title: data.title || "",
           content: data.content || "",
           mediaUrls: data.mediaUrls || [],
+          media: data.media || [],
           postedBy: data.postedBy || "",
           authorName: data.authorName || "Unknown",
           authorRole: data.authorRole || "teacher",
@@ -149,14 +155,14 @@ export default function NewsScreen() {
       // Student filtering
       if (role === "student" && userData.role === "student") {
         if (audience.type === "department") {
-          return audience.department === userData.departmentId;
+          return audience.departmentId === userData.departmentId;
         }
         if (audience.type === "semester") {
           return audience.semester === userData.semester;
         }
         if (audience.type === "departmentSemester") {
           return (
-            audience.department === userData.departmentId &&
+            audience.departmentId === userData.departmentId &&
             audience.semester === userData.semester
           );
         }
@@ -165,11 +171,11 @@ export default function NewsScreen() {
       // Teacher filtering
       if (role === "teacher" && userData.role === "teacher") {
         if (audience.type === "department") {
-          return audience.department === userData.departmentId;
+          return audience.departmentId === userData.departmentId;
         }
         // Teachers can see semester-specific posts in their department
         if (audience.type === "departmentSemester") {
-          return audience.department === userData.departmentId;
+          return audience.departmentId === userData.departmentId;
         }
       }
 
@@ -219,10 +225,10 @@ export default function NewsScreen() {
 
   const getAudienceBadge = (audience: NewsPost["targetAudience"]) => {
     if (audience.type === "all") return "Everyone";
-    if (audience.type === "department") return `${audience.department} Dept`;
+    if (audience.type === "department") return `${audience.departmentId} Dept`;
     if (audience.type === "semester") return `Semester ${audience.semester}`;
     if (audience.type === "departmentSemester") {
-      return `${audience.department} - Sem ${audience.semester}`;
+      return `${audience.departmentId} - Sem ${audience.semester}`;
     }
     return "Everyone";
   };
@@ -236,7 +242,158 @@ export default function NewsScreen() {
     return name[0].toUpperCase();
   };
 
+  const getMediaList = (post: NewsPost): MediaAttachment[] => {
+    // Prefer new media field, fallback to mediaUrls
+    if (post.media && post.media.length > 0) {
+      return post.media;
+    }
+    // Convert legacy mediaUrls to MediaAttachment format
+    if (post.mediaUrls && post.mediaUrls.length > 0) {
+      return post.mediaUrls.map((url) => ({
+        url,
+        storagePath: "",
+        fileName: "Attachment",
+        mimeType: url.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+          ? "image/jpeg"
+          : "application/octet-stream",
+        fileSize: 0,
+      }));
+    }
+    return [];
+  };
+
+  const isImageFile = (mimeType: string) => {
+    return mimeType.startsWith("image/");
+  };
+
+  const isVideoFile = (mimeType: string) => {
+    return mimeType.startsWith("video/");
+  };
+
+  const handleFilePress = async (media: MediaAttachment) => {
+    try {
+      const supported = await Linking.canOpenURL(media.url);
+      if (supported) {
+        await Linking.openURL(media.url);
+      } else {
+        Alert.alert("Error", "Cannot open this file type");
+      }
+    } catch (error) {
+      console.error("Error opening file:", error);
+      Alert.alert("Error", "Failed to open file");
+    }
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (isImageFile(mimeType)) {
+      return <ImageIcon size={20} color="#10B981" />;
+    }
+    if (isVideoFile(mimeType)) {
+      return <Video size={20} color="#8B5CF6" />;
+    }
+    return <FileText size={20} color="#3B82F6" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes || bytes === 0) return "";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
   const canCreatePost = role === "teacher" || role === "admin";
+
+  const renderMediaGallery = (post: NewsPost) => {
+    const media = getMediaList(post);
+    if (media.length === 0) return null;
+
+    // Filter images and documents
+    const images = media.filter((m) => isImageFile(m.mimeType));
+    const documents = media.filter((m) => !isImageFile(m.mimeType));
+
+    return (
+      <VStack space="sm" className="mt-2">
+        {/* Image Gallery */}
+        {images.length > 0 && (
+          <View>
+            {images.length === 1 ? (
+              <TouchableOpacity
+                onPress={() => handleFilePress(images[0])}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: images[0].url }}
+                  style={{
+                    width: "100%",
+                    height: 200,
+                    borderRadius: 8,
+                  }}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                className="gap-2"
+              >
+                {images.map((item, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => handleFilePress(item)}
+                    activeOpacity={0.9}
+                  >
+                    <Image
+                      source={{ uri: item.url }}
+                      style={{
+                        width: 150,
+                        height: 150,
+                        borderRadius: 8,
+                        marginRight: 8,
+                      }}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
+
+        {/* Documents List */}
+        {documents.length > 0 && (
+          <VStack space="xs">
+            {documents.map((doc, index) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => handleFilePress(doc)}
+                className="bg-gray-50 rounded-lg p-3 border border-gray-200"
+              >
+                <HStack space="sm" className="items-center">
+                  {getFileIcon(doc.mimeType)}
+                  <VStack className="flex-1">
+                    <Text
+                      className="text-sm font-medium text-gray-800"
+                      numberOfLines={1}
+                    >
+                      {doc.fileName || "Document"}
+                    </Text>
+                    {doc.fileSize > 0 && (
+                      <Text className="text-xs text-gray-500">
+                        {formatFileSize(doc.fileSize)}
+                      </Text>
+                    )}
+                  </VStack>
+                  <Icon as={ExternalLink} size="sm" className="text-gray-400" />
+                </HStack>
+              </TouchableOpacity>
+            ))}
+          </VStack>
+        )}
+      </VStack>
+    );
+  };
 
   const renderPostCard = ({ item }: { item: NewsPost }) => (
     <View className="bg-white mx-4 mb-4 rounded-lg border border-gray-200 overflow-hidden">
@@ -302,41 +459,7 @@ export default function NewsScreen() {
         )}
 
         {/* Media Gallery */}
-        {item.mediaUrls.length > 0 && (
-          <View className="mt-2">
-            {item.mediaUrls.length === 1 ? (
-              <Image
-                source={{ uri: item.mediaUrls[0] }}
-                style={{
-                  width: "100%",
-                  height: 200,
-                  borderRadius: 8,
-                }}
-                resizeMode="cover"
-              />
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                className="gap-2"
-              >
-                {item.mediaUrls.map((url, index) => (
-                  <Image
-                    key={index}
-                    source={{ uri: url }}
-                    style={{
-                      width: 150,
-                      height: 150,
-                      borderRadius: 8,
-                      marginRight: 8,
-                    }}
-                    resizeMode="cover"
-                  />
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
+        {renderMediaGallery(item)}
       </VStack>
     </View>
   );

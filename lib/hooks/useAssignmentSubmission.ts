@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/AuthContext';
-import { useFileUpload } from './useFileUpload';
+import { useFileUpload, type UploadableFile } from './useFileUpload';
 import type { AssignmentStatus } from '@/types';
 
 interface SubmitAssignmentOptions {
@@ -45,7 +45,7 @@ export function useAssignmentSubmission() {
 
   const submitWithFile = useCallback(
     async (
-      file: File,
+      file: UploadableFile,
       options: SubmitAssignmentOptions
     ): Promise<string> => {
       if (!user) {

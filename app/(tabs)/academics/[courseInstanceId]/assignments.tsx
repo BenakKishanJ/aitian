@@ -19,7 +19,7 @@ import { useAssignmentSubmission } from "@/lib/hooks/useAssignmentSubmission";
 import type { AssignmentWithStatus } from "@/types";
 import { AssignmentCard } from "@/components/academics/AssignmentCard";
 import type { AssignmentStatus } from "@/types";
-import { FilePicker } from "@/components/ui/FilePicker";
+import { FilePicker, type PickedFile } from "@/components/ui/FilePicker";
 import { UploadProgressBar } from "@/components/ui/UploadProgress";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
@@ -52,7 +52,7 @@ export default function AssignmentsScreen() {
   const [submitUrl, setSubmitUrl] = useState("");
   const [submitText, setSubmitText] = useState("");
   const [submitMode, setSubmitMode] = useState<"file" | "text" | "url">("file");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<PickedFile | null>(null);
 
   const {
     assignments,

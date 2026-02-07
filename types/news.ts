@@ -2,6 +2,25 @@ import { Timestamp } from 'firebase/firestore';
 import { AudienceType, Role } from './constants';
 
 /**
+ * Media attachment for posts
+ * Supports both images and documents
+ */
+export interface MediaAttachment {
+  /** Download URL from Firebase Storage */
+  url: string;
+  /** Storage path for deletion/management */
+  storagePath: string;
+  /** Original filename */
+  fileName: string;
+  /** MIME type of the file */
+  mimeType: string;
+  /** File size in bytes */
+  fileSize: number;
+  /** Display name (optional, defaults to fileName) */
+  displayName?: string;
+}
+
+/**
  * Target audience for a news post
  */
 export interface TargetAudience {
@@ -17,7 +36,10 @@ export interface NewsPost {
   id: string;
   title?: string;
   content: string;
-  mediaUrls: string[];
+  /** Legacy field - kept for backward compatibility */
+  mediaUrls?: string[];
+  /** New rich media field with metadata */
+  media?: MediaAttachment[];
   postedBy: string;
   authorName: string;
   authorRole: Role;
@@ -47,6 +69,8 @@ export interface RecentAnnouncement {
   isPinned: boolean;
   createdAt: Timestamp;
   timeAgo: string;
+  /** Whether post has any media */
+  hasMedia?: boolean;
 }
 
 /**
@@ -64,7 +88,10 @@ export interface NewsFilterOptions {
 export interface NewsPostCreateData {
   title?: string;
   content: string;
+  /** Legacy field - kept for backward compatibility */
   mediaUrls?: string[];
+  /** New rich media field with metadata */
+  media?: MediaAttachment[];
   isAnonymous?: boolean;
   isPinned?: boolean;
   targetAudience: TargetAudience;
@@ -76,6 +103,9 @@ export interface NewsPostCreateData {
 export interface NewsPostUpdateData {
   title?: string;
   content?: string;
+  /** Legacy field - kept for backward compatibility */
   mediaUrls?: string[];
+  /** New rich media field with metadata */
+  media?: MediaAttachment[];
   isPinned?: boolean;
 }

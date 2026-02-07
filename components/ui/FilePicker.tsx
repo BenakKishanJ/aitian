@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { HStack } from '@/components/ui/hstack';
@@ -13,40 +14,36 @@ import {
   FileText,
   Image as ImageIcon,
   X,
-  Check,
+  File,
+  Video,
 } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export type FileType = 'image' | 'document' | 'any';
 
-interface FilePickerProps {
-  onFileSelect: (file: File) => void;
-  onClear?: () => void;
-  fileType?: FileType;
-  selectedFile?: File | null;
-  disabled?: boolean;
-  label?: string;
-  accept?: string;
+export interface PickedFile {
+  uri: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** MIME type alias to match UploadableFile interface */
+  type: string;
 }
 
-// Helper to convert expo file to web File object
-const createFileFromUri = async (
-  uri: string,
-  name: string,
-  mimeType: string
-): Promise<File> => {
-  // For web, we can use fetch
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return new File([blob], name, { type: mimeType });
-  }
-  
-  // For React Native, we need to handle this differently
-  // This is a simplified version - in production you'd use expo-file-system
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return new File([blob], name, { type: mimeType });
-};
+interface FilePickerProps {
+  onFileSelect: (file: PickedFile) => void;
+  onClear?: () => void;
+  fileType?: FileType;
+  selectedFile?: PickedFile | null;
+  disabled?: boolean;
+  label?: string;
+  maxSizeMB?: number;
+  allowMultiple?: boolean;
+  onMultipleSelect?: (files: PickedFile[]) => void;
+  selectedFiles?: PickedFile[];
+}
 
 export function FilePicker({
   onFileSelect,
@@ -55,13 +52,32 @@ export function FilePicker({
   selectedFile,
   disabled = false,
   label = 'Select File',
-  accept,
+  maxSizeMB = 10,
+  allowMultiple = false,
+  onMultipleSelect,
+  selectedFiles = [],
 }: FilePickerProps) {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const validateFile = (file: { size?: number; mimeType?: string }): string | null => {
+    if (file.size) {
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
+      if (file.size > maxSizeBytes) {
+        return `File size exceeds ${maxSizeMB}MB limit`;
+      }
+    }
+    return null;
+  };
 
   const getAcceptTypes = () => {
-    if (accept) return accept;
-    
     switch (fileType) {
       case 'image':
         return 'image/*';
@@ -72,152 +88,326 @@ export function FilePicker({
     }
   };
 
-  const getFileIcon = () => {
-    if (!selectedFile) {
+  const getFileIcon = (mimeType?: string) => {
+    if (!mimeType) {
       return <Upload size={24} color={disabled ? '#9CA3AF' : '#000000'} />;
     }
     
-    if (selectedFile.type.startsWith('image/')) {
+    if (mimeType.startsWith('image/')) {
       return <ImageIcon size={24} color="#10B981" />;
+    }
+    
+    if (mimeType.startsWith('video/')) {
+      return <Video size={24} color="#8B5CF6" />;
     }
     
     return <FileText size={24} color="#3B82F6" />;
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  const pickDocument = async () => {
+    try {
+      setIsLoading(true);
+      
+      const options: DocumentPicker.DocumentPickerOptions = {
+        type: fileType === 'image' 
+          ? 'image/*' 
+          : fileType === 'document' 
+            ? ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+            : '*/*',
+        copyToCacheDirectory: true,
+        multiple: allowMultiple,
+      };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      onFileSelect(files[0]);
+      const result = await DocumentPicker.getDocumentAsync(options);
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (allowMultiple && result.assets && result.assets.length > 0) {
+        const files: PickedFile[] = [];
+        
+        for (const asset of result.assets) {
+          const mimeType = asset.mimeType || 'application/octet-stream';
+          const file: PickedFile = {
+            uri: asset.uri,
+            name: asset.name || 'unnamed-file',
+            mimeType: mimeType,
+            type: mimeType,
+            size: asset.size || 0,
+          };
+
+          const validationError = validateFile(file);
+          if (validationError) {
+            Alert.alert('File Too Large', `${file.name}: ${validationError}`);
+            continue;
+          }
+
+          files.push(file);
+        }
+
+        if (files.length > 0) {
+          onMultipleSelect?.(files);
+        }
+      } else if (result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        const mimeType = asset.mimeType || 'application/octet-stream';
+        const file: PickedFile = {
+          uri: asset.uri,
+          name: asset.name || 'unnamed-file',
+          mimeType: mimeType,
+          type: mimeType,
+          size: asset.size || 0,
+        };
+
+        const validationError = validateFile(file);
+        if (validationError) {
+          Alert.alert('Error', validationError);
+          return;
+        }
+
+        onFileSelect(file);
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick file. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleClear = () => {
-    onClear?.();
+  const pickImage = async () => {
+    try {
+      setIsLoading(true);
+
+      // Request permission first
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant access to your photo library to select images.');
+        return;
+      }
+
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        allowsMultipleSelection: allowMultiple,
+        quality: 0.8,
+      };
+
+      const result = await ImagePicker.launchImageLibraryAsync(options);
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (allowMultiple && result.assets && result.assets.length > 0) {
+        const files: PickedFile[] = [];
+        
+        for (const asset of result.assets) {
+          const mimeType = asset.mimeType || 'image/jpeg';
+          
+          // Get actual file size
+          let fileSize = 0;
+          try {
+            const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+            if (fileInfo.exists && 'size' in fileInfo) {
+              fileSize = fileInfo.size;
+            }
+          } catch (e) {
+            // Size unknown, will be determined during upload
+          }
+          
+          const file: PickedFile = {
+            uri: asset.uri,
+            name: asset.fileName || `image-${Date.now()}.jpg`,
+            mimeType: mimeType,
+            type: mimeType,
+            size: fileSize,
+          };
+
+          files.push(file);
+        }
+
+        onMultipleSelect?.(files);
+      } else if (result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        const mimeType = asset.mimeType || 'image/jpeg';
+        
+        // Get actual file size
+        let fileSize = 0;
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+          if (fileInfo.exists && 'size' in fileInfo) {
+            fileSize = fileInfo.size;
+          }
+        } catch (e) {
+          // Size unknown, will be determined during upload
+        }
+        
+        const file: PickedFile = {
+          uri: asset.uri,
+          name: asset.fileName || `image-${Date.now()}.jpg`,
+          mimeType: mimeType,
+          type: mimeType,
+          size: fileSize,
+        };
+
+        onFileSelect(file);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Web implementation using hidden input
-  if (Platform.OS === 'web') {
-    return (
-      <View style={styles.container}>
-        {!selectedFile ? (
-          <View
-            style={[
-              styles.uploadArea,
-              isHovered && styles.uploadAreaHovered,
-              disabled && styles.uploadAreaDisabled,
-            ]}
-            // @ts-ignore - web-only props
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-          >
+  const handlePickFile = () => {
+    if (disabled || isLoading) return;
+
+    if (fileType === 'image') {
+      pickImage();
+    } else {
+      // For 'document' or 'any', show options
+      if (fileType === 'any') {
+        Alert.alert(
+          'Select File Type',
+          'Choose the type of file you want to upload',
+          [
+            { text: 'Image', onPress: pickImage },
+            { text: 'Document', onPress: pickDocument },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+      } else {
+        pickDocument();
+      }
+    }
+  };
+
+  const handleClear = (index?: number) => {
+    if (allowMultiple && selectedFiles.length > 0 && typeof index === 'number') {
+      const newFiles = selectedFiles.filter((_, i) => i !== index);
+      onMultipleSelect?.(newFiles);
+    } else {
+      onClear?.();
+    }
+  };
+
+  const getHintText = () => {
+    if (fileType === 'image') {
+      return 'Supports: JPG, PNG, GIF, WebP';
+    } else if (fileType === 'document') {
+      return 'Supports: PDF, DOC, DOCX, TXT';
+    }
+    return 'Tap to select image or document';
+  };
+
+  // Render single file or multiple files
+  const renderFileList = () => {
+    if (allowMultiple && selectedFiles.length > 0) {
+      return (
+        <View style={styles.fileList}>
+          {selectedFiles.map((file, index) => (
+            <View key={index} style={styles.fileSelected}>
+              <HStack space="md" style={styles.fileInfo}>
+                {getFileIcon(file.mimeType)}
+                <View style={styles.fileDetails}>
+                  <Text style={styles.fileName} numberOfLines={1}>
+                    {file.name}
+                  </Text>
+                  {file.size > 0 && (
+                    <Text style={styles.fileSize}>
+                      {formatFileSize(file.size)}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={() => handleClear(index)}
+                  disabled={disabled}
+                >
+                  <X size={20} color="#EF4444" />
+                </TouchableOpacity>
+              </HStack>
+            </View>
+          ))}
+          {selectedFiles.length < 5 && (
             <TouchableOpacity
-              onPress={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = getAcceptTypes();
-                input.onchange = (e) => {
-                  const files = (e.target as HTMLInputElement).files;
-                  if (files && files.length > 0) {
-                    onFileSelect(files[0]);
-                  }
-                };
-                input.click();
-              }}
+              style={[styles.addMoreButton, disabled && styles.uploadAreaDisabled]}
+              onPress={handlePickFile}
               disabled={disabled}
-              style={styles.touchableContent}
             >
-              {getFileIcon()}
-              <Text style={[styles.label, disabled && styles.labelDisabled]}>
-                {label}
-              </Text>
-              <Text style={styles.hint}>
-                {fileType === 'image'
-                  ? 'Supports: JPG, PNG, GIF'
-                  : fileType === 'document'
-                  ? 'Supports: PDF, DOC, DOCX'
-                  : 'Click to browse files'}
+              <File size={20} color={disabled ? '#9CA3AF' : '#6B7280'} />
+              <Text style={[styles.addMoreText, disabled && styles.labelDisabled]}>
+                Add another file
               </Text>
             </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.fileSelected}>
-            <HStack space="md" style={styles.fileInfo}>
-              {getFileIcon()}
-              <View style={styles.fileDetails}>
-                <Text style={styles.fileName} numberOfLines={1}>
-                  {selectedFile.name}
-                </Text>
-                <Text style={styles.fileSize}>
-                  {formatFileSize(selectedFile.size)}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={handleClear}
-                disabled={disabled}
-              >
-                <X size={20} color="#EF4444" />
-              </TouchableOpacity>
-            </HStack>
-          </View>
-        )}
-      </View>
-    );
-  }
+          )}
+        </View>
+      );
+    }
 
-  // Native implementation (simplified - would need expo-document-picker)
-  return (
-    <View style={styles.container}>
-      {!selectedFile ? (
-        <TouchableOpacity
-          style={[
-            styles.uploadArea,
-            disabled && styles.uploadAreaDisabled,
-          ]}
-          onPress={() => {
-            Alert.alert(
-              'File Upload',
-              'File picker requires expo-document-picker. Please use the URL option for now.',
-              [{ text: 'OK' }]
-            );
-          }}
-          disabled={disabled}
-        >
-          {getFileIcon()}
-          <Text style={[styles.label, disabled && styles.labelDisabled]}>
-            {label}
-          </Text>
-          <Text style={styles.hint}>Tap to select file</Text>
-        </TouchableOpacity>
-      ) : (
+    if (selectedFile) {
+      return (
         <View style={styles.fileSelected}>
           <HStack space="md" style={styles.fileInfo}>
-            {getFileIcon()}
+            {getFileIcon(selectedFile.mimeType)}
             <View style={styles.fileDetails}>
               <Text style={styles.fileName} numberOfLines={1}>
                 {selectedFile.name}
               </Text>
-              <Text style={styles.fileSize}>
-                {formatFileSize(selectedFile.size)}
-              </Text>
+              {selectedFile.size > 0 && (
+                <Text style={styles.fileSize}>
+                  {formatFileSize(selectedFile.size)}
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               style={styles.clearButton}
-              onPress={handleClear}
+              onPress={() => handleClear()}
               disabled={disabled}
             >
               <X size={20} color="#EF4444" />
             </TouchableOpacity>
           </HStack>
         </View>
+      );
+    }
+
+    return null;
+  };
+
+  const fileList = renderFileList();
+
+  return (
+    <View style={styles.container}>
+      {!fileList ? (
+        <TouchableOpacity
+          style={[
+            styles.uploadArea,
+            disabled && styles.uploadAreaDisabled,
+          ]}
+          onPress={handlePickFile}
+          disabled={disabled || isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#000000" />
+          ) : (
+            <>
+              {getFileIcon()}
+              <Text style={[styles.label, disabled && styles.labelDisabled]}>
+                {label}
+              </Text>
+              <Text style={styles.hint}>{getHintText()}</Text>
+              <Text style={styles.maxSizeHint}>
+                Max size: {maxSizeMB}MB
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : (
+        fileList
       )}
     </View>
   );
@@ -237,15 +427,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#F9FAFB',
   },
-  touchableContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  uploadAreaHovered: {
-    borderColor: '#000000',
-    backgroundColor: '#F3F4F6',
-  },
   uploadAreaDisabled: {
     opacity: 0.5,
     borderColor: '#D1D5DB',
@@ -263,6 +444,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     marginTop: 4,
+  },
+  maxSizeHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  fileList: {
+    gap: 8,
   },
   fileSelected: {
     borderWidth: 1,
@@ -289,5 +478,22 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 8,
+  },
+  addMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    gap: 8,
+  },
+  addMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
   },
 });
