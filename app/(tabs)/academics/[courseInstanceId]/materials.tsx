@@ -12,15 +12,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { Search, Plus, X, Upload, Filter } from "lucide-react-native";
+import { Search, Plus, X, Upload, Filter, Link, File } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useMaterials } from "@/lib/hooks/useMaterials";
+import { useMaterialUpload } from "@/lib/hooks/useMaterialUpload";
 import { MaterialCard } from "@/components/academics/MaterialCard";
+import { FilePicker } from "@/components/ui/FilePicker";
+import { UploadProgressBar } from "@/components/ui/UploadProgress";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Icon } from "@/components/ui/icon";
-import { Button, ButtonText } from "@/components/ui/button";
 
 export default function MaterialsScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
@@ -42,7 +44,8 @@ export default function MaterialsScreen() {
   const [uploadUrl, setUploadUrl] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadFileSize, setUploadFileSize] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const {
     materials,
@@ -58,6 +61,15 @@ export default function MaterialsScreen() {
     searchQuery,
     typeFilter,
   });
+
+  const {
+    uploadMaterial,
+    deleteMaterialWithFile,
+    isUploading,
+    progress,
+    error: uploadError,
+    resetUpload,
+  } = useMaterialUpload();
 
   const canUpload = role === "teacher" || role === "admin";
 
@@ -95,34 +107,39 @@ export default function MaterialsScreen() {
   };
 
   const handleUpload = async () => {
-    if (!uploadTitle.trim() || !uploadUrl.trim()) {
-      Alert.alert("Error", "Please fill in title and URL");
+    if (!uploadTitle.trim()) {
+      Alert.alert("Error", "Please enter a title");
       return;
     }
 
-    setUploading(true);
     try {
-      await addMaterial({
-        title: uploadTitle,
-        type: uploadType,
-        url: uploadUrl,
-        description: uploadDescription.trim() || undefined,
-        fileSize: uploadFileSize.trim() || undefined,
-      });
+      if (uploadMode === "file" && selectedFile) {
+        // Upload file
+        await uploadMaterial(selectedFile, {
+          courseInstanceId: courseInstanceId as string,
+          title: uploadTitle,
+          type: uploadType,
+          description: uploadDescription.trim() || undefined,
+        });
+      } else if (uploadMode === "url" && uploadUrl.trim()) {
+        // Add URL-based material
+        await addMaterial({
+          title: uploadTitle,
+          type: uploadType,
+          url: uploadUrl,
+          description: uploadDescription.trim() || undefined,
+          fileSize: uploadFileSize.trim() || undefined,
+        });
+      } else {
+        Alert.alert("Error", uploadMode === "file" ? "Please select a file" : "Please enter a URL");
+        return;
+      }
 
       // Reset form
-      setUploadTitle("");
-      setUploadType("pdf");
-      setUploadUrl("");
-      setUploadDescription("");
-      setUploadFileSize("");
-      setShowUploadModal(false);
-
+      resetUploadForm();
       Alert.alert("Success", "Material uploaded successfully");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to upload material");
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -132,6 +149,9 @@ export default function MaterialsScreen() {
     setUploadUrl("");
     setUploadDescription("");
     setUploadFileSize("");
+    setUploadMode("file");
+    setSelectedFile(null);
+    resetUpload();
     setShowUploadModal(false);
   };
 
@@ -443,12 +463,112 @@ export default function MaterialsScreen() {
                   />
                 </VStack>
 
+                {/* Upload Mode Toggle */}
+                <HStack space="sm">
+                  <TouchableOpacity
+                    onPress={() => setUploadMode("file")}
+                    style={[
+                      styles.modeButton,
+                      uploadMode === "file" && styles.modeButtonActive,
+                    ]}
+                  >
+                    <Icon
+                      as={File}
+                      size="sm"
+                      className={uploadMode === "file" ? "text-white" : "text-gray-700"}
+                    />
+                    <Text
+                      className={
+                        uploadMode === "file"
+                          ? "text-white font-semibold ml-2"
+                          : "text-gray-700 ml-2"
+                      }
+                    >
+                      Upload File
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setUploadMode("url")}
+                    style={[
+                      styles.modeButton,
+                      uploadMode === "url" && styles.modeButtonActive,
+                    ]}
+                  >
+                    <Icon
+                      as={Link}
+                      size="sm"
+                      className={uploadMode === "url" ? "text-white" : "text-gray-700"}
+                    />
+                    <Text
+                      className={
+                        uploadMode === "url"
+                          ? "text-white font-semibold ml-2"
+                          : "text-gray-700 ml-2"
+                      }
+                    >
+                      Add URL
+                    </Text>
+                  </TouchableOpacity>
+                </HStack>
+
+                {/* File Upload or URL Input */}
+                {uploadMode === "file" ? (
+                  <VStack space="xs">
+                    <Text className="text-sm font-semibold text-gray-700">
+                      Select File *
+                    </Text>
+                    <FilePicker
+                      onFileSelect={setSelectedFile}
+                      onClear={() => setSelectedFile(null)}
+                      selectedFile={selectedFile}
+                      disabled={isUploading}
+                      fileType="document"
+                      label="Click to select file"
+                    />
+                    <UploadProgressBar progress={progress} />
+                    {uploadError && (
+                      <Text className="text-red-600 text-sm">{uploadError}</Text>
+                    )}
+                  </VStack>
+                ) : (
+                  <>
+                    <VStack space="xs">
+                      <Text className="text-sm font-semibold text-gray-700">
+                        URL / Link *
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="https://example.com/file.pdf"
+                        value={uploadUrl}
+                        onChangeText={setUploadUrl}
+                        placeholderTextColor="#9CA3AF"
+                        keyboardType="url"
+                        autoCapitalize="none"
+                      />
+                    </VStack>
+
+                    <VStack space="xs">
+                      <Text className="text-sm font-semibold text-gray-700">
+                        File Size
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="e.g., 2.5 MB (optional)"
+                        value={uploadFileSize}
+                        onChangeText={setUploadFileSize}
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </VStack>
+                  </>
+                )}
+
                 {/* Buttons */}
                 <HStack space="sm" className="mt-4">
                   <TouchableOpacity
                     onPress={resetUploadForm}
                     style={[styles.button, styles.buttonSecondary]}
-                    disabled={uploading}
+                    disabled={isUploading}
                   >
                     <Text className="text-black font-semibold">Cancel</Text>
                   </TouchableOpacity>
@@ -457,10 +577,12 @@ export default function MaterialsScreen() {
                     onPress={handleUpload}
                     style={[styles.button, styles.buttonPrimary]}
                     disabled={
-                      uploading || !uploadTitle.trim() || !uploadUrl.trim()
+                      isUploading ||
+                      !uploadTitle.trim() ||
+                      (uploadMode === "file" ? !selectedFile : !uploadUrl.trim())
                     }
                   >
-                    {uploading ? (
+                    {isUploading ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
                       <HStack space="xs" className="items-center">
@@ -651,5 +773,20 @@ const styles = StyleSheet.create({
   },
   buttonPrimary: {
     backgroundColor: "#000000",
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  modeButtonActive: {
+    backgroundColor: "#000000",
+    borderColor: "#000000",
   },
 });

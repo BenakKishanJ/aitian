@@ -37,6 +37,10 @@ export interface Submission {
   studentName?: string;
   submissionUrl?: string;
   submissionText?: string;
+  storagePath?: string;
+  fileName?: string;
+  fileSize?: string;
+  mimeType?: string;
   submittedAt: Timestamp;
   grade?: number;
   feedback?: string;

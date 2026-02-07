@@ -15,9 +15,12 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Search, Plus, X, Filter, FileText } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useAssignments } from "@/lib/hooks/useAssignments";
+import { useAssignmentSubmission } from "@/lib/hooks/useAssignmentSubmission";
 import type { AssignmentWithStatus } from "@/types";
 import { AssignmentCard } from "@/components/academics/AssignmentCard";
 import type { AssignmentStatus } from "@/types";
+import { FilePicker } from "@/components/ui/FilePicker";
+import { UploadProgressBar } from "@/components/ui/UploadProgress";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
@@ -27,7 +30,7 @@ export default function AssignmentsScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
     courseInstanceId: string;
   }>();
-  const { role } = useAuth();
+  const { user, role } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -48,7 +51,8 @@ export default function AssignmentsScreen() {
   // Submit form state
   const [submitUrl, setSubmitUrl] = useState("");
   const [submitText, setSubmitText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitMode, setSubmitMode] = useState<"file" | "text" | "url">("file");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const {
     assignments,
@@ -65,6 +69,15 @@ export default function AssignmentsScreen() {
     searchQuery,
     status: role === "student" ? statusFilter : null,
   });
+
+  const {
+    submitWithFile,
+    submitTextOnly,
+    isSubmitting,
+    progress,
+    error: submitError,
+    resetSubmission,
+  } = useAssignmentSubmission();
 
   const canCreate = role === "teacher" || role === "admin";
   const canSubmit = role === "student";
@@ -134,30 +147,59 @@ export default function AssignmentsScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedAssignment || (!submitUrl.trim() && !submitText.trim())) {
-      Alert.alert("Error", "Please provide a submission URL or text");
+    if (!selectedAssignment) {
+      Alert.alert("Error", "No assignment selected");
       return;
     }
 
-    setSubmitting(true);
     try {
-      await submitAssignment(selectedAssignment.id, {
-        submissionUrl: submitUrl.trim() || undefined,
-        submissionText: submitText.trim() || undefined,
-      });
+      if (submitMode === "file" && selectedFile) {
+        // Submit with file
+        await submitWithFile(selectedFile, {
+          assignmentId: selectedAssignment.id,
+          studentId: user!.uid,
+          submissionText: submitText.trim() || undefined,
+        });
+      } else if (submitMode === "url" && submitUrl.trim()) {
+        // Submit with URL
+        await submitAssignment(selectedAssignment.id, {
+          submissionUrl: submitUrl.trim(),
+          submissionText: submitText.trim() || undefined,
+        });
+      } else if (submitMode === "text" && submitText.trim()) {
+        // Submit text only
+        await submitTextOnly(submitText.trim(), {
+          assignmentId: selectedAssignment.id,
+          studentId: user!.uid,
+        });
+      } else {
+        Alert.alert(
+          "Error",
+          submitMode === "file"
+            ? "Please select a file"
+            : submitMode === "url"
+            ? "Please enter a URL"
+            : "Please write your submission"
+        );
+        return;
+      }
 
       // Reset form
-      setSubmitUrl("");
-      setSubmitText("");
-      setShowDetailModal(false);
-      setSelectedAssignment(null);
-
+      resetSubmitForm();
       Alert.alert("Success", "Assignment submitted successfully");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to submit assignment");
-    } finally {
-      setSubmitting(false);
     }
+  };
+
+  const resetSubmitForm = () => {
+    setSubmitUrl("");
+    setSubmitText("");
+    setSubmitMode("file");
+    setSelectedFile(null);
+    resetSubmission();
+    setShowDetailModal(false);
+    setSelectedAssignment(null);
   };
 
   const resetCreateForm = () => {
@@ -285,6 +327,13 @@ export default function AssignmentsScreen() {
             role={role!}
             onPress={handleAssignmentPress}
             onDelete={canCreate ? handleDelete : undefined}
+            onGrade={(assignmentId) => {
+              router.push({
+                pathname: "/(tabs)/academics/[courseInstanceId]/assignments/[assignmentId]/grading",
+                params: { courseInstanceId: courseInstanceId as string, assignmentId },
+              });
+            }}
+            courseInstanceId={courseInstanceId as string}
           />
         ))}
 
@@ -495,12 +544,7 @@ export default function AssignmentsScreen() {
         visible={showDetailModal}
         transparent
         animationType="slide"
-        onRequestClose={() => {
-          setShowDetailModal(false);
-          setSelectedAssignment(null);
-          setSubmitUrl("");
-          setSubmitText("");
-        }}
+        onRequestClose={resetSubmitForm}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.detailModal}>
@@ -511,12 +555,7 @@ export default function AssignmentsScreen() {
                     <Text className="text-xl font-bold text-black">
                       {selectedAssignment.title}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowDetailModal(false);
-                        setSelectedAssignment(null);
-                      }}
-                    >
+                    <TouchableOpacity onPress={resetSubmitForm}>
                       <Icon as={X} size="lg" className="text-gray-500" />
                     </TouchableOpacity>
                   </HStack>
@@ -555,42 +594,131 @@ export default function AssignmentsScreen() {
                         Submit Assignment
                       </Text>
 
-                      <VStack space="xs">
-                        <Text className="text-sm font-semibold text-gray-700">
-                          Submission URL
-                        </Text>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="https://example.com/submission.pdf"
-                          value={submitUrl}
-                          onChangeText={setSubmitUrl}
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="url"
-                          autoCapitalize="none"
-                        />
-                      </VStack>
+                      {/* Submit Mode Toggle */}
+                      <HStack space="sm">
+                        <TouchableOpacity
+                          onPress={() => setSubmitMode("file")}
+                          style={[
+                            styles.modeButton,
+                            submitMode === "file" && styles.modeButtonActive,
+                          ]}
+                        >
+                          <Text
+                            className={
+                              submitMode === "file"
+                                ? "text-white font-semibold"
+                                : "text-gray-700"
+                            }
+                          >
+                            File
+                          </Text>
+                        </TouchableOpacity>
 
-                      <VStack space="xs">
-                        <Text className="text-sm font-semibold text-gray-700">
-                          Or Write Text
-                        </Text>
-                        <TextInput
-                          style={[styles.input, styles.textArea]}
-                          placeholder="Write your submission here..."
-                          value={submitText}
-                          onChangeText={setSubmitText}
-                          placeholderTextColor="#9CA3AF"
-                          multiline
-                          numberOfLines={6}
-                        />
-                      </VStack>
+                        <TouchableOpacity
+                          onPress={() => setSubmitMode("text")}
+                          style={[
+                            styles.modeButton,
+                            submitMode === "text" && styles.modeButtonActive,
+                          ]}
+                        >
+                          <Text
+                            className={
+                              submitMode === "text"
+                                ? "text-white font-semibold"
+                                : "text-gray-700"
+                            }
+                          >
+                            Text
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setSubmitMode("url")}
+                          style={[
+                            styles.modeButton,
+                            submitMode === "url" && styles.modeButtonActive,
+                          ]}
+                        >
+                          <Text
+                            className={
+                              submitMode === "url"
+                                ? "text-white font-semibold"
+                                : "text-gray-700"
+                            }
+                          >
+                            URL
+                          </Text>
+                        </TouchableOpacity>
+                      </HStack>
+
+                      {/* File Upload */}
+                      {submitMode === "file" && (
+                        <VStack space="xs">
+                          <Text className="text-sm font-semibold text-gray-700">
+                            Select File *
+                          </Text>
+                          <FilePicker
+                            onFileSelect={setSelectedFile}
+                            onClear={() => setSelectedFile(null)}
+                            selectedFile={selectedFile}
+                            disabled={isSubmitting}
+                            fileType="document"
+                            label="Click to select file (PDF, DOC, images)"
+                          />
+                          <UploadProgressBar progress={progress} />
+                          {submitError && (
+                            <Text className="text-red-600 text-sm">{submitError}</Text>
+                          )}
+                        </VStack>
+                      )}
+
+                      {/* URL Input */}
+                      {submitMode === "url" && (
+                        <VStack space="xs">
+                          <Text className="text-sm font-semibold text-gray-700">
+                            Submission URL *
+                          </Text>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="https://example.com/submission.pdf"
+                            value={submitUrl}
+                            onChangeText={setSubmitUrl}
+                            placeholderTextColor="#9CA3AF"
+                            keyboardType="url"
+                            autoCapitalize="none"
+                          />
+                        </VStack>
+                      )}
+
+                      {/* Text Input (shown for text mode or as optional for file/url modes) */}
+                      {(submitMode === "text" || submitMode === "file") && (
+                        <VStack space="xs">
+                          <Text className="text-sm font-semibold text-gray-700">
+                            {submitMode === "text" ? "Your Answer *" : "Additional Notes (Optional)"}
+                          </Text>
+                          <TextInput
+                            style={[styles.input, styles.textArea]}
+                            placeholder={submitMode === "text" ? "Write your submission here..." : "Add any notes or comments..."}
+                            value={submitText}
+                            onChangeText={setSubmitText}
+                            placeholderTextColor="#9CA3AF"
+                            multiline
+                            numberOfLines={submitMode === "text" ? 6 : 3}
+                          />
+                        </VStack>
+                      )}
 
                       <TouchableOpacity
                         onPress={handleSubmit}
                         style={[styles.button, styles.buttonPrimary]}
-                        disabled={submitting || (!submitUrl.trim() && !submitText.trim())}
+                        disabled={
+                          isSubmitting ||
+                          (submitMode === "file" && !selectedFile) ||
+                          (submitMode === "url" && !submitUrl.trim()) ||
+                          (submitMode === "text" && !submitText.trim())
+                        }
                       >
-                        {submitting ? (
+                        {isSubmitting ? (
                           <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
                           <Text className="text-white font-semibold">Submit</Text>
@@ -817,5 +945,19 @@ const styles = StyleSheet.create({
   },
   buttonPrimary: {
     backgroundColor: "#000000",
+  },
+  modeButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  modeButtonActive: {
+    backgroundColor: "#000000",
+    borderColor: "#000000",
   },
 });

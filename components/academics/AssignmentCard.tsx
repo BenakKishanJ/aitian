@@ -10,6 +10,7 @@ import {
   XCircle,
   Trash2,
   Award,
+  BarChart3,
 } from "lucide-react-native";
 import { Text } from "@/components/ui/text";
 import { HStack } from "@/components/ui/hstack";
@@ -22,6 +23,8 @@ interface AssignmentCardProps {
   role: "student" | "teacher" | "parent" | "admin";
   onPress: (assignment: AssignmentWithStatus) => void;
   onDelete?: (assignmentId: string) => void;
+  onGrade?: (assignmentId: string) => void;
+  courseInstanceId: string;
 }
 
 export function AssignmentCard({
@@ -29,6 +32,8 @@ export function AssignmentCard({
   role,
   onPress,
   onDelete,
+  onGrade,
+  courseInstanceId,
 }: AssignmentCardProps) {
   const getStatusInfo = () => {
     const status = assignment.submissionStatus;
@@ -129,6 +134,7 @@ export function AssignmentCard({
   };
 
   const canDelete = role === "teacher" || role === "admin";
+  const canGrade = role === "teacher" || role === "admin";
   const statusInfo = getStatusInfo();
   const daysUntil = getDaysUntilDue();
   const overdueStatus = isOverdue();
@@ -182,7 +188,17 @@ export function AssignmentCard({
               )}
           </VStack>
 
-          {/* Delete Button */}
+          {/* Action Buttons */}
+          {canGrade && (
+            <TouchableOpacity
+              onPress={() => onGrade?.(assignment.id)}
+              style={styles.gradeButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon as={BarChart3} size="sm" className="text-white" />
+            </TouchableOpacity>
+          )}
+
           {canDelete && (
             <TouchableOpacity
               onPress={handleDelete}
@@ -310,6 +326,12 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: "#F9FAFB",
+  },
+  gradeButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#000000",
+    marginRight: 8,
   },
   attachmentHint: {
     paddingTop: 8,
