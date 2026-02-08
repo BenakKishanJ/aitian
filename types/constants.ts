@@ -19,6 +19,8 @@ export const COLLECTIONS = {
   DISCUSSION_REPLIES: 'discussionReplies',
   NEWS_POSTS: 'newsPosts',
   PARENT_LINKS: 'parentLinks',
+  COURSE_REQUESTS: 'courseRequests',
+  ELECTIVE_GROUPS: 'electiveGroups',
   CONFIG: 'config',
 } as const;
 
@@ -154,17 +156,15 @@ export const ATTENDANCE_STATUSES = {
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[keyof typeof ATTENDANCE_STATUSES];
 
 /**
- * Grade letters
+ * Updated Grade letters based on new grading scale
+ * O: 90-100 (9-10), A+: 80-89 (8-9), A: 70-79 (7-8), B+: 60-69 (6-7), B: 50-59 (5-6), F: <50
  */
 export const GRADES = {
+  O: 'O',
   A_PLUS: 'A+',
   A: 'A',
   B_PLUS: 'B+',
   B: 'B',
-  C_PLUS: 'C+',
-  C: 'C',
-  D: 'D',
-  E: 'E',
   F: 'F',
 } as const;
 
@@ -190,3 +190,37 @@ export const LINK_STATUSES = {
 } as const;
 
 export type LinkStatus = (typeof LINK_STATUSES)[keyof typeof LINK_STATUSES];
+
+/**
+ * Enrollment statuses for student course enrollments
+ */
+export const ENROLLMENT_STATUSES = {
+  AUTO_ENROLLED: 'auto-enrolled',
+  ELECTIVE_PENDING: 'elective-pending',
+  ELECTIVE_ENROLLED: 'elective-enrolled',
+  LOCKED: 'locked',
+} as const;
+
+export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[keyof typeof ENROLLMENT_STATUSES];
+
+/**
+ * Course request statuses for teacher course requests
+ */
+export const COURSE_REQUEST_STATUSES = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+} as const;
+
+export type CourseRequestStatus = (typeof COURSE_REQUEST_STATUSES)[keyof typeof COURSE_REQUEST_STATUSES];
+
+/**
+ * Promotion statuses for students
+ */
+export const PROMOTION_STATUSES = {
+  CURRENT: 'current',
+  PROMOTED: 'promoted',
+  PENDING: 'pending',
+} as const;
+
+export type PromotionStatus = (typeof PROMOTION_STATUSES)[keyof typeof PROMOTION_STATUSES];

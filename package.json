@@ -11,6 +11,7 @@
     "build:preview": "expo export --platform web --output-dir dist",
     "test": "jest --watchAll",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules",
+    "firebase:deploy:storage": "firebase deploy --only storage",
     "firebase:emulators": "firebase emulators:start --only firestore",
     "firebase:login": "firebase login"
   },

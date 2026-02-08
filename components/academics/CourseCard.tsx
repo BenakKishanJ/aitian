@@ -1,126 +1,202 @@
-import React from "react";
-import { TouchableOpacity, View, StyleSheet } from "react-native";
-import { router } from "expo-router";
-import { BookOpen, Users, Calendar, TrendingUp } from "lucide-react-native";
-import { Text } from "@/components/ui/text";
-import { HStack } from "@/components/ui/hstack";
-import { VStack } from "@/components/ui/vstack";
-import { Icon } from "@/components/ui/icon";
-import type { CourseInstanceWithDetails } from "@/types";
+import React from 'react';
+import { TouchableOpacity, View, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { BookOpen, Users, TrendingUp, Lock, AlertCircle, ChevronRight } from 'lucide-react-native';
+import { Text } from '@/components/ui/text';
+import { HStack } from '@/components/ui/hstack';
+import { VStack } from '@/components/ui/vstack';
+import { Badge } from '@/components/ui/badge';
+import { CourseInstanceWithDetails, EnrollmentStatus } from '@/types';
 
 interface CourseCardProps {
   courseInstance: CourseInstanceWithDetails;
-  role: "student" | "teacher" | "parent" | "admin";
+  role: 'student' | 'teacher' | 'parent' | 'admin';
+  enrollmentStatus?: EnrollmentStatus;
+  isLocked?: boolean;
+  onPress?: () => void;
 }
 
-export function CourseCard({ courseInstance, role }: CourseCardProps) {
+export function CourseCard({
+  courseInstance,
+  role,
+  enrollmentStatus,
+  isLocked = false,
+  onPress,
+}: CourseCardProps) {
   const { course, section, teacherNames, attendancePercentage, totalStudents } =
     courseInstance;
 
   const handlePress = () => {
-    router.push(`/(tabs)/academics/${courseInstance.id}`);
+    if (isLocked) return;
+    if (onPress) {
+      onPress();
+    } else {
+      router.push(`/(tabs)/academics/${courseInstance.id}`);
+    }
   };
 
-  const getAttendanceColor = (percentage?: number) => {
-    if (!percentage) return "#9CA3AF";
-    if (percentage >= 75) return "#10B981";
-    if (percentage >= 60) return "#F59E0B";
-    return "#EF4444";
+  const getAttendanceColor = (percentage?: number): string => {
+    if (!percentage) return '#77867D';
+    if (percentage >= 75) return '#5AA578';
+    if (percentage >= 60) return '#F9CD61';
+    return '#F96857';
   };
+
+  const isElectivePending = enrollmentStatus === 'elective-pending';
+  const isElectiveEnrolled = enrollmentStatus === 'elective-enrolled';
+  const showElectiveBadge = course?.isElective && role === 'student';
+
+  const getCardBorderStyle = () => {
+    if (isLocked) {
+      return {
+        borderWidth: 1,
+        borderColor: '#E9F0EB',
+        borderStyle: 'solid' as const,
+        opacity: 0.6,
+      };
+    }
+    if (isElectivePending) {
+      return {
+        borderWidth: 2,
+        borderColor: '#7477FF',
+        borderStyle: 'dashed' as const,
+        borderRadius: 12,
+      };
+    }
+    return {
+      borderWidth: 0,
+    };
+  };
+
+  const borderStyle = getCardBorderStyle();
 
   return (
     <TouchableOpacity
       onPress={handlePress}
-      activeOpacity={0.7}
-      style={styles.card}
+      activeOpacity={isLocked ? 1 : 0.7}
+      disabled={isLocked}
+      style={[styles.card, borderStyle]}
     >
-      <VStack space="md">
-        {/* Header */}
-        <View>
-          <Text className="text-lg font-bold text-black">
-            {course?.name || "Loading..."}
+      {/* Elective Pending Indicator */}
+      {isElectivePending && (
+        <View style={styles.electiveBanner}>
+          <AlertCircle size={14} color="#7477FF" />
+          <Text style={styles.electiveBannerText}>
+            Select your elective course
           </Text>
-          <HStack space="sm" className="mt-1">
-            <Text className="text-sm text-gray-500 font-medium">
-              {course?.courseCode || ""}
-            </Text>
-            <Text className="text-sm text-gray-400">•</Text>
-            <Text className="text-sm text-gray-500">Section {section}</Text>
-          </HStack>
         </View>
+      )}
 
-        {/* Stats Row */}
-        <HStack space="lg" className="flex-wrap">
-          {/* Credits */}
-          <HStack space="xs" className="items-center">
-            <Icon as={BookOpen} size="sm" className="text-gray-600" />
-            <Text className="text-sm text-gray-700">
-              {course?.credits || 0} Credits
+      <VStack space="md">
+        {/* Header with Course Code Badge */}
+        <HStack className="items-start justify-between">
+          <VStack className="flex-1" space="xs">
+            <HStack space="sm" className="items-center">
+              <Badge
+                variant="outline"
+                className="bg-purple-50 border-purple-200"
+              >
+                <Text className="text-xs font-semibold text-purple-600">
+                  {course?.courseCode || 'N/A'}
+                </Text>
+              </Badge>
+              {showElectiveBadge && (
+                <Badge
+                  variant="outline"
+                  className={
+                    isElectivePending
+                      ? 'bg-yellow-50 border-yellow-300'
+                      : 'bg-cyan-50 border-cyan-200'
+                  }
+                >
+                  <Text
+                    className={`text-xs font-semibold ${
+                      isElectivePending ? 'text-yellow-700' : 'text-cyan-700'
+                    }`}
+                  >
+                    {isElectivePending ? 'Elective (Pending)' : 'Elective'}
+                  </Text>
+                </Badge>
+              )}
+            </HStack>
+            <Text className="text-lg font-bold text-black leading-tight">
+              {course?.name || 'Loading...'}
             </Text>
-          </HStack>
+          </VStack>
 
-          {/* Teacher Names (for students) or Total Students (for teachers) */}
-          {role === "student" || role === "parent" ? (
+          {/* Credits Badge */}
+          <View style={styles.creditsBadge}>
+            <Text className="text-xs font-bold text-purple-600">
+              {course?.credits || 0}
+            </Text>
+            <Text className="text-[10px] text-purple-500">credits</Text>
+          </View>
+        </HStack>
+
+        {/* Section & Teachers */}
+        <HStack space="lg" className="flex-wrap items-center">
+          <View style={styles.sectionBadge}>
+            <Text className="text-xs font-medium text-gray-600">
+              Section {section}
+            </Text>
+          </View>
+
+          {role === 'student' || role === 'parent' ? (
             teacherNames && teacherNames.length > 0 && (
               <HStack space="xs" className="items-center flex-1">
-                <Icon as={Users} size="sm" className="text-gray-600" />
-                <Text className="text-sm text-gray-700 flex-1" numberOfLines={1}>
-                  {teacherNames.join(", ")}
+                <Users size={14} color="#77867D" />
+                <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
+                  {teacherNames.join(', ')}
                 </Text>
               </HStack>
             )
           ) : (
             <HStack space="xs" className="items-center">
-              <Icon as={Users} size="sm" className="text-gray-600" />
-              <Text className="text-sm text-gray-700">
+              <Users size={14} color="#77867D" />
+              <Text className="text-sm text-gray-600">
                 {totalStudents || 0} Students
               </Text>
             </HStack>
           )}
         </HStack>
 
-        {/* Bottom Row */}
-        <HStack className="justify-between items-center pt-2 border-t border-gray-200">
-          {/* Semester */}
-          <HStack space="xs" className="items-center">
-            <Icon as={Calendar} size="sm" className="text-gray-600" />
-            <Text className="text-sm text-gray-700">
-              Semester {courseInstance.semester}
-            </Text>
+        {/* Bottom Row with Stats */}
+        <HStack className="justify-between items-center pt-2 border-t border-gray-100">
+          <HStack space="md">
+            {/* Attendance (for students only) */}
+            {(role === 'student' || role === 'parent') &&
+              attendancePercentage !== undefined && (
+                <HStack space="xs" className="items-center">
+                  <TrendingUp
+                    size={16}
+                    color={getAttendanceColor(attendancePercentage)}
+                  />
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: getAttendanceColor(attendancePercentage) }}
+                  >
+                    {attendancePercentage.toFixed(0)}%
+                  </Text>
+                  <Text className="text-xs text-gray-400">attendance</Text>
+                </HStack>
+              )}
           </HStack>
 
-          {/* Attendance (for students only) */}
-          {(role === "student" || role === "parent") &&
-            attendancePercentage !== undefined && (
-              <HStack space="xs" className="items-center">
-                <Icon
-                  as={TrendingUp}
-                  size="sm"
-                  style={{ color: getAttendanceColor(attendancePercentage) }}
-                />
-                <Text
-                  className="text-sm font-semibold"
-                  style={{ color: getAttendanceColor(attendancePercentage) }}
-                >
-                  {attendancePercentage.toFixed(1)}%
-                </Text>
-              </HStack>
-            )}
-
-          {/* Course Type Badge */}
-          {course?.isElective && (
-            <View
-              style={{
-                backgroundColor: "#DBEAFE",
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 6,
-              }}
-            >
-              <Text className="text-xs font-semibold text-blue-600">
-                Elective
+          {/* Action Indicator */}
+          {isLocked ? (
+            <HStack space="xs" className="items-center">
+              <Lock size={14} color="#77867D" />
+              <Text className="text-xs text-gray-500">Locked</Text>
+            </HStack>
+          ) : isElectivePending ? (
+            <HStack space="xs" className="items-center">
+              <Text className="text-xs font-semibold text-purple-600">
+                Select Course
               </Text>
-            </View>
+              <ChevronRight size={16} color="#7477FF" />
+            </HStack>
+          ) : (
+            <ChevronRight size={20} color="#C5D4CA" />
           )}
         </HStack>
       </VStack>
@@ -130,17 +206,48 @@ export function CourseCard({ courseInstance, role }: CourseCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
+    shadowColor: '#232323',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  creditsBadge: {
+    backgroundColor: '#F0F1FF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  sectionBadge: {
+    backgroundColor: '#F4F7F5',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  electiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F0F1FF',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  electiveBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7477FF',
   },
 });
+
+export default CourseCard;

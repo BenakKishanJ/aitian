@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
-import { Role, DepartmentId, LinkStatus } from './constants';
+import { Role, DepartmentId, LinkStatus, PromotionStatus } from './constants';
 
 /**
  * Base user data interface
@@ -30,6 +30,8 @@ export interface StudentUserData extends BaseUserData {
   usn: string;
   batch: string;
   linkedParentIds?: string[];
+  promotionStatus: PromotionStatus;
+  lastPromotionDate?: Timestamp;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface TeacherUserData extends BaseUserData {
   /** @deprecated Use departmentId instead - kept for backward compatibility */
   department?: string;
   teacherCode: string;
+  approvedCourseIds: string[];
+  pendingCourseIds: string[];
 }
 
 /**

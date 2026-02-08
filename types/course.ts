@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
-import { DepartmentId, EnrollmentType } from './constants';
+import { DepartmentId, EnrollmentType, EnrollmentStatus } from './constants';
 
 /**
  * Course metadata
@@ -67,7 +67,45 @@ export interface Enrollment {
   studentId: string;
   courseInstanceId: string;
   enrollmentType: EnrollmentType;
+  enrollmentStatus: EnrollmentStatus;
+  electiveGroupId?: string;
+  selectedElectiveCourseId?: string;
   enrolledAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * Elective Group - groups elective courses together
+ * Students choose one course from the group
+ */
+export interface ElectiveGroup {
+  id: string;
+  name: string;
+  departmentId: DepartmentId;
+  semester: number;
+  courseIds: string[];
+  description?: string;
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * Course Request - teacher request to teach a course
+ */
+export interface CourseRequest {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  courseName: string;
+  departmentId: DepartmentId;
+  semester: number;
+  section: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: Timestamp;
+  reviewedAt?: Timestamp;
+  reviewedBy?: string;
+  rejectionReason?: string;
+  createdCourseInstanceId?: string;
 }
 
 /**
