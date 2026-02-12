@@ -18,6 +18,8 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { autoEnrollStudentToCourses } from "@/lib/enrollmentUtils";
+import { DEPARTMENTS, SEMESTERS, SECTIONS } from "@/types/constants";
 
 /* Gluestack UI (local re-exports) */
 import { VStack } from "@/components/ui/vstack";
@@ -44,24 +46,7 @@ import {
 } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
 
-// Mock data
-const DEPARTMENTS = [
-  { id: "cse", name: "Computer Science & Engineering", code: "CSE" },
-  { id: "ece", name: "Electronics & Communication", code: "ECE" },
-  { id: "me", name: "Mechanical Engineering", code: "ME" },
-  { id: "cv", name: "Civil Engineering", code: "CV" },
-  { id: "ee", name: "Electrical Engineering", code: "EE" },
-];
 
-const SEMESTERS = Array.from({ length: 8 }, (_, i) => ({
-  id: (i + 1).toString(),
-  name: `Semester ${i + 1}`,
-}));
-
-const SECTIONS = ["A", "B", "C", "D"].map((letter) => ({
-  id: letter.toLowerCase(),
-  name: `Section ${letter}`,
-}));
 
 export default function RegisterStudentScreen() {
   const [loading, setLoading] = useState(false);
@@ -156,6 +141,24 @@ export default function RegisterStudentScreen() {
       };
 
       await setDoc(doc(db, "users", userCredential.user.uid), userData);
+
+      // Auto-enroll student in courses
+      try {
+        const enrollmentResult = await autoEnrollStudentToCourses(
+          userCredential.user.uid,
+          formData.department as any,
+          parseInt(formData.semester),
+          formData.section
+        );
+
+        if (enrollmentResult.success) {
+          console.log(`Auto-enrolled in ${enrollmentResult.enrolledCount} courses`);
+        } else {
+          console.error('Auto-enrollment failed:', enrollmentResult.error);
+        }
+      } catch (enrollErr) {
+        console.error('Error during auto-enrollment:', enrollErr);
+      }
 
       Alert.alert(
         "Registration Successful!",
@@ -379,7 +382,7 @@ export default function RegisterStudentScreen() {
                       {DEPARTMENTS.map((dept) => (
                         <SelectItem
                           key={dept.id}
-                          label={dept.name}
+                          label={`${dept.code} - ${dept.name}`}
                           value={dept.id}
                         />
                       ))}
@@ -424,9 +427,9 @@ export default function RegisterStudentScreen() {
                         </SelectDragIndicatorWrapper>
                         {SEMESTERS.map((sem) => (
                           <SelectItem
-                            key={sem.id}
-                            label={sem.name}
-                            value={sem.id}
+                            key={sem}
+                            label={`Semester ${sem}`}
+                            value={sem.toString()}
                           />
                         ))}
                       </SelectContent>
@@ -472,9 +475,9 @@ export default function RegisterStudentScreen() {
                         </SelectDragIndicatorWrapper>
                         {SECTIONS.map((sec) => (
                           <SelectItem
-                            key={sec.id}
-                            label={sec.name}
-                            value={sec.id}
+                            key={sec}
+                            label={`Section ${sec}`}
+                            value={sec.toLowerCase()}
                           />
                         ))}
                       </SelectContent>

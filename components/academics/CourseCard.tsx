@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { BookOpen, Users, TrendingUp, Lock, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { HStack } from '@/components/ui/hstack';
@@ -14,6 +14,7 @@ interface CourseCardProps {
   enrollmentStatus?: EnrollmentStatus;
   isLocked?: boolean;
   onPress?: () => void;
+  onLongPress?: () => void;
 }
 
 export function CourseCard({
@@ -22,16 +23,31 @@ export function CourseCard({
   enrollmentStatus,
   isLocked = false,
   onPress,
+  onLongPress,
 }: CourseCardProps) {
+  const router = useRouter();
   const { course, section, teacherNames, attendancePercentage, totalStudents } =
     courseInstance;
 
   const handlePress = () => {
     if (isLocked) return;
+
     if (onPress) {
       onPress();
     } else {
-      router.push(`/(tabs)/academics/${courseInstance.id}`);
+      // Navigate to course detail page using relative path
+      // This works regardless of which tab the user is in
+      router.push({
+        pathname: '/academics/[courseInstanceId]',
+        params: { courseInstanceId: courseInstance.id }
+      } as any);
+    }
+  };
+
+  const handleLongPress = () => {
+    if (isLocked) return;
+    if (onLongPress) {
+      onLongPress();
     }
   };
 
@@ -73,6 +89,8 @@ export function CourseCard({
   return (
     <TouchableOpacity
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={500}
       activeOpacity={isLocked ? 1 : 0.7}
       disabled={isLocked}
       style={[styles.card, borderStyle]}

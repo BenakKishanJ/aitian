@@ -7,10 +7,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { Calendar, CheckCircle, XCircle, TrendingUp, Plus, Users } from "lucide-react-native";
+import { Calendar, CheckCircle, XCircle, TrendingUp, Plus, Users, Shield, Trash2 } from "lucide-react-native";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
@@ -21,26 +22,25 @@ import { useAttendanceRecords } from "@/lib/hooks/useAttendanceRecords";
 import { StartAttendanceSessionModal } from "@/components/attendance/StartAttendanceSessionModal";
 import { AttendanceMarkingInterface } from "@/components/attendance/AttendanceMarkingInterface";
 import { AttendanceSessionCard } from "@/components/attendance/AttendanceSessionCard";
-import { AttendanceCalendar } from "@/components/attendance/AttendanceCalendar";
+import { AttendanceReport } from "@/components/attendance/AttendanceReport";
 import { useCourseDetails } from "@/lib/hooks/useCourseDetails";
-import type { ParentUserData } from "@/types";
+import { collection, query, where, getDocs, writeBatch, deleteDoc, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { COLLECTIONS } from "@/types/constants";
+import { FileText } from "lucide-react-native";
 
-export default function AttendanceScreen() {
+export default function AdminAttendanceScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
     courseInstanceId: string;
   }>();
-  const { role, user, userData } = useAuth();
-  const isTeacherOrAdmin = role === "teacher" || role === "admin";
-  
-  // For parents, get the linked student's ID
-  const targetStudentId = role === 'parent' && userData
-    ? (userData as ParentUserData).linkedStudentId 
-    : undefined;
+  const { role, user } = useAuth();
   
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showStartModal, setShowStartModal] = useState(false);
   const [markingSessionId, setMarkingSessionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const {
     sessions,
@@ -62,54 +62,132 @@ export default function AttendanceScreen() {
     loading: courseLoading,
   } = useCourseDetails(courseInstanceId as string);
 
-  // Get attendance records and stats for students/parents
+  // Get attendance records and stats
   const {
     stats,
     loading: recordsLoading,
     refresh: refreshRecords,
-  } = useAttendanceRecords(courseInstanceId as string, targetStudentId);
+  } = useAttendanceRecords(courseInstanceId as string);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await refreshSessions();
-    if (!isTeacherOrAdmin) {
-      await refreshRecords();
-    }
+    await refreshRecords();
     setRefreshing(false);
   };
 
-  // Student View - Calendar with attendance
-  const renderStudentView = () => {
-    const getAttendanceColor = (percentage: number) => {
-      if (percentage >= 75) return "#10B981";
-      if (percentage >= 60) return "#F59E0B";
-      return "#EF4444";
-    };
+  const handleDeleteAllSessions = async () => {
+    Alert.alert(
+      "Delete All Sessions",
+      "Are you sure you want to delete ALL attendance sessions and records for this course? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete All",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingAll(true);
+            try {
+              const batch = writeBatch(db);
 
-    const getAttendanceStatus = (percentage: number) => {
-      if (percentage >= 75) return "Good Standing";
-      if (percentage >= 60) return "Warning";
-      return "At Risk";
-    };
+              // Delete all sessions and their records
+              for (const session of sessions) {
+                const recordsQuery = query(
+                  collection(db, COLLECTIONS.ATTENDANCE_RECORDS),
+                  where("sessionId", "==", session.id)
+                );
+                const recordsSnap = await getDocs(recordsQuery);
+                recordsSnap.docs.forEach((recordDoc) => {
+                  batch.delete(recordDoc.ref);
+                });
 
-    const attendanceColor = getAttendanceColor(stats.percentage);
-    const attendanceStatus = getAttendanceStatus(stats.percentage);
+                const sessionRef = doc(db, COLLECTIONS.ATTENDANCE_SESSIONS, session.id);
+                batch.delete(sessionRef);
+              }
 
-    return (
-      <>
-        {/* Summary Card */}
+              await batch.commit();
+              await refreshSessions();
+              Alert.alert("Success", "All attendance sessions deleted successfully");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete sessions");
+            } finally {
+              setDeletingAll(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Calculate class attendance statistics
+  const getClassAverage = () => {
+    if (stats.totalClasses === 0) return 0;
+    return Math.round((stats.attendedClasses / stats.totalClasses) * 100);
+  };
+
+  const classAverage = getClassAverage();
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <HStack className="justify-between items-center px-4 py-3">
+          <HStack space="sm" className="items-center">
+            <Shield size={20} color="#8B5CF6" />
+            <Text className="text-xl font-bold text-black">Admin: Attendance</Text>
+          </HStack>
+
+          <HStack space="sm">
+            <TouchableOpacity
+              onPress={() => setShowReportModal(true)}
+              style={styles.reportButton}
+            >
+              <Icon as={FileText} size="md" className="text-blue-600" />
+            </TouchableOpacity>
+            
+            {sessions.length > 0 && (
+              <TouchableOpacity
+                onPress={handleDeleteAllSessions}
+                style={styles.deleteAllButton}
+                disabled={deletingAll}
+              >
+                <Icon as={Trash2} size="md" className="text-red-600" />
+              </TouchableOpacity>
+            )}
+          </HStack>
+        </HStack>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {/* Course Info */}
+        <View style={styles.courseInfoCard}>
+          <Text className="text-base font-semibold text-gray-700">
+            {courseDetails?.course?.name || "Loading..."}
+          </Text>
+          <Text className="text-sm text-gray-500">
+            {courseDetails?.course?.courseCode} | Section {courseDetails?.section}
+          </Text>
+        </View>
+
+        {/* Class Attendance Summary */}
         <View style={styles.summaryCard}>
           <VStack space="lg">
             <View style={styles.percentageContainer}>
               <View
                 style={[
                   styles.percentageCircle,
-                  { borderColor: attendanceColor },
+                  { borderColor: classAverage >= 75 ? "#10B981" : classAverage >= 60 ? "#F59E0B" : "#EF4444" },
                 ]}
               >
                 <Text
                   className="text-5xl font-bold"
-                  style={{ color: attendanceColor }}
+                  style={{ color: classAverage >= 75 ? "#10B981" : classAverage >= 60 ? "#F59E0B" : "#EF4444" }}
                 >
                   {stats.percentage.toFixed(0)}%
                 </Text>
@@ -117,115 +195,41 @@ export default function AttendanceScreen() {
             </View>
 
             <VStack space="xs" className="items-center">
-              <HStack space="xs" className="items-center">
-                <Icon
-                  as={stats.percentage >= 75 ? CheckCircle : XCircle}
-                  size="md"
-                  style={{ color: attendanceColor }}
-                />
-                <Text
-                  className="text-lg font-semibold"
-                  style={{ color: attendanceColor }}
-                >
-                  {attendanceStatus}
-                </Text>
-              </HStack>
-              <Text className="text-sm text-gray-500">
-                {stats.attendedClasses} / {stats.totalClasses} classes attended
+              <Text className="text-gray-500 text-lg">Class Average Attendance</Text>
+              <Text className="text-sm text-gray-400">
+                Based on {sessions.length} session{sessions.length !== 1 ? "s" : ""}
               </Text>
             </VStack>
 
             <HStack className="justify-around">
               <VStack space="xs" className="items-center">
+                <Text className="text-2xl font-bold text-blue-600">
+                  {sessions.length}
+                </Text>
+                <Text className="text-xs text-gray-500">Total Sessions</Text>
+              </VStack>
+
+              <View style={styles.divider} />
+
+              <VStack space="xs" className="items-center">
                 <Text className="text-2xl font-bold text-green-600">
-                  {stats.attendedClasses}
+                  {sessions.filter((s) => s.isLocked).length}
                 </Text>
-                <Text className="text-xs text-gray-500">Present</Text>
+                <Text className="text-xs text-gray-500">Locked</Text>
               </VStack>
 
               <View style={styles.divider} />
 
               <VStack space="xs" className="items-center">
-                <Text className="text-2xl font-bold text-red-600">
-                  {stats.totalClasses - stats.attendedClasses}
+                <Text className="text-2xl font-bold text-orange-600">
+                  {sessions.filter((s) => !s.isLocked).length}
                 </Text>
-                <Text className="text-xs text-gray-500">Absent</Text>
-              </VStack>
-
-              <View style={styles.divider} />
-
-              <VStack space="xs" className="items-center">
-                <Text className="text-2xl font-bold text-gray-700">
-                  {stats.totalClasses}
-                </Text>
-                <Text className="text-xs text-gray-500">Total</Text>
+                <Text className="text-xs text-gray-500">Active</Text>
               </VStack>
             </HStack>
           </VStack>
         </View>
 
-        {/* Calendar Card */}
-        <View style={styles.card}>
-          <Text className="text-lg font-bold text-black mb-4">
-            Attendance Calendar
-          </Text>
-          <AttendanceCalendar
-            courseInstanceId={courseInstanceId as string}
-            studentId={targetStudentId || user?.uid}
-          />
-        </View>
-
-        {/* Sessions List */}
-        <View style={styles.card}>
-          <Text className="text-lg font-bold text-black mb-4">
-            Class Sessions
-          </Text>
-          
-          {sessions.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Calendar size={48} color="#D1D5DB" />
-              <Text style={styles.emptyTitle}>No Sessions Yet</Text>
-              <Text style={styles.emptyText}>
-                No attendance sessions have been recorded for this course.
-              </Text>
-            </View>
-          ) : (
-            <VStack space="sm">
-              {sessions.map((session) => (
-                <AttendanceSessionCard
-                  key={session.id}
-                  session={session}
-                  showActions={false}
-                />
-              ))}
-            </VStack>
-          )}
-        </View>
-
-        {/* Warning Message */}
-        {stats.percentage < 75 && stats.totalClasses > 0 && (
-          <View style={styles.warningCard}>
-            <HStack space="md" className="items-start">
-              <Icon as={TrendingUp} size="md" className="text-amber-600" />
-              <VStack space="xs" className="flex-1">
-                <Text className="text-base font-semibold text-amber-900">
-                  Attendance Warning
-                </Text>
-                <Text className="text-sm text-amber-800">
-                  Your attendance is below 75%. Please attend classes regularly.
-                </Text>
-              </VStack>
-            </HStack>
-          </View>
-        )}
-      </>
-    );
-  };
-
-  // Teacher View - Session Management
-  const renderTeacherView = () => {
-    return (
-      <>
         {/* Active Session Alert */}
         {activeSession && (
           <TouchableOpacity
@@ -264,9 +268,14 @@ export default function AttendanceScreen() {
 
         {/* Sessions List */}
         <View style={styles.card}>
-          <Text className="text-lg font-bold text-black mb-4">
-            Attendance Sessions
-          </Text>
+          <HStack className="justify-between items-center mb-4">
+            <Text className="text-lg font-bold text-black">
+              Attendance Sessions
+            </Text>
+            <Text className="text-sm text-gray-500">
+              {sessions.length} total
+            </Text>
+          </HStack>
           
           {sessionsLoading ? (
             <ActivityIndicator size="large" color="#000000" />
@@ -298,11 +307,11 @@ export default function AttendanceScreen() {
         {/* Instructions */}
         <View style={styles.instructionsCard}>
           <Text className="text-base font-semibold text-gray-800 mb-2">
-            How to Take Attendance
+            Admin Instructions
           </Text>
           <VStack space="xs">
             <Text className="text-sm text-gray-600">
-              1. Tap "Start Attendance Session" to begin
+              1. Tap "Start Attendance Session" to begin a new session
             </Text>
             <Text className="text-sm text-gray-600">
               2. Tap on a session to mark students present/absent
@@ -311,36 +320,14 @@ export default function AttendanceScreen() {
               3. Use "Mark All Present/Absent" for quick marking
             </Text>
             <Text className="text-sm text-gray-600">
-              4. Lock the session when finished
+              4. Lock the session when finished to prevent changes
+            </Text>
+            <Text className="text-sm text-gray-600">
+              5. Delete individual sessions or all sessions if needed
             </Text>
           </VStack>
         </View>
-      </>
-    );
-  };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <VStack space="xs">
-          <Text className="text-xl font-bold text-black">
-            Attendance
-          </Text>
-          <Text className="text-sm text-gray-500">
-            {courseDetails?.course?.name || "Loading..."}
-          </Text>
-        </VStack>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
-        {isTeacherOrAdmin ? renderTeacherView() : renderStudentView()}
         <View style={{ height: 24 }} />
       </ScrollView>
 
@@ -382,6 +369,33 @@ export default function AttendanceScreen() {
           )}
         </SafeAreaView>
       </Modal>
+
+      {/* Report Modal */}
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <SafeAreaView style={styles.markingModal}>
+          <View style={styles.markingHeader}>
+            <TouchableOpacity
+              onPress={() => setShowReportModal(false)}
+              style={styles.closeButton}
+            >
+              <Text className="text-base font-semibold text-gray-600">Close</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-bold text-black">Attendance Report</Text>
+            <View style={{ width: 50 }} />
+          </View>
+          
+          <View style={{ flex: 1, padding: 16 }}>
+            <AttendanceReport
+              courseInstanceId={courseInstanceId as string}
+              courseName={courseDetails?.course?.name}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -395,14 +409,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  },
+  deleteAllButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#FEE2E2",
+  },
+  reportButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#DBEAFE",
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
+  },
+  courseInfoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
   summaryCard: {
     backgroundColor: "#FFFFFF",
@@ -444,7 +472,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   activeSessionBanner: {
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -487,14 +515,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-  },
-  warningCard: {
-    backgroundColor: "#FEF3C7",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#FCD34D",
   },
   markingModal: {
     flex: 1,

@@ -15,7 +15,6 @@ import { useLocalSearchParams, router } from "expo-router";
 import {
   ChevronLeft,
   Search,
-  Filter,
   FileText,
   Link,
   CheckCircle,
@@ -27,8 +26,9 @@ import {
   ExternalLink,
   MessageSquare,
   Save,
+  Shield,
+  Trash2,
 } from "lucide-react-native";
-import { Redirect } from "expo-router";
 import { useAuth } from "@/lib/AuthContext";
 import { useAssignmentGrading, SubmissionWithStudent } from "@/lib/hooks/useAssignmentGrading";
 import { useNotificationService } from "@/lib/hooks/useNotificationService";
@@ -36,22 +36,16 @@ import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Icon } from "@/components/ui/icon";
+import { collection, query, where, getDocs, writeBatch, deleteDoc, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { COLLECTIONS } from "@/types/constants";
 
-export default function AssignmentGradingScreen() {
+export default function AdminAssignmentGradingScreen() {
   const { courseInstanceId, assignmentId } = useLocalSearchParams<{
     courseInstanceId: string;
     assignmentId: string;
   }>();
   const { role, userData } = useAuth();
-
-  // Role guard: Only teachers and admins can access grading
-  if (role === "student" || role === "parent") {
-    return (
-      <Redirect
-        href={`/(tabs)/academics/${courseInstanceId}/assignments/${assignmentId}`}
-      />
-    );
-  }
 
   const { notifyAssignmentGraded } = useNotificationService();
 
@@ -61,6 +55,7 @@ export default function AssignmentGradingScreen() {
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionWithStudent | null>(null);
   const [gradeInput, setGradeInput] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const { assignment, loading, error, isGrading, gradeSubmission, refresh } = useAssignmentGrading(
     assignmentId as string
@@ -132,6 +127,41 @@ export default function AssignmentGradingScreen() {
     }
   };
 
+  const handleDeleteAllSubmissions = async () => {
+    Alert.alert(
+      "Delete All Submissions",
+      "Are you sure you want to delete ALL submissions for this assignment? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete All",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingAll(true);
+            try {
+              const batch = writeBatch(db);
+              const submissionsQuery = query(
+                collection(db, COLLECTIONS.SUBMISSIONS),
+                where("assignmentId", "==", assignmentId)
+              );
+              const submissionsSnap = await getDocs(submissionsQuery);
+              submissionsSnap.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+              });
+              await batch.commit();
+              await refresh();
+              Alert.alert("Success", "All submissions deleted successfully");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete submissions");
+            } finally {
+              setDeletingAll(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getSubmissionType = (submission: SubmissionWithStudent) => {
     if (submission.storagePath) return "file";
     if (submission.submissionUrl) return "url";
@@ -194,10 +224,13 @@ export default function AssignmentGradingScreen() {
           </TouchableOpacity>
 
           <View style={styles.headerTitleContainer}>
-            <Text className="text-lg font-bold text-black" numberOfLines={1}>
-              {assignment.title}
-            </Text>
-            <Text className="text-sm text-gray-500">Grading</Text>
+            <HStack space="sm" className="items-center justify-center">
+              <Shield size={16} color="#8B5CF6" />
+              <Text className="text-lg font-bold text-black" numberOfLines={1}>
+                {assignment.title}
+              </Text>
+            </HStack>
+            <Text className="text-sm text-gray-500">Admin Grading</Text>
           </View>
 
           <TouchableOpacity onPress={refresh} style={styles.refreshButton}>
@@ -295,6 +328,17 @@ export default function AssignmentGradingScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
+
+            {assignment.submissions.length > 0 && (
+              <TouchableOpacity
+                onPress={handleDeleteAllSubmissions}
+                style={[styles.filterChip, styles.deleteChip]}
+                disabled={deletingAll}
+              >
+                <Icon as={Trash2} size="xs" className="text-red-600" />
+                <Text className="text-red-600 text-sm ml-1">Delete All</Text>
+              </TouchableOpacity>
+            )}
           </HStack>
         </View>
 
@@ -584,7 +628,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statCardPrimary: {
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
   },
   statCardSecondary: {
     backgroundColor: "#F3F4F6",
@@ -600,7 +644,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: "100%",
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
     borderRadius: 4,
   },
   progressBarSecondary: {
@@ -635,10 +679,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     borderWidth: 1,
     borderColor: "#E5E7EB",
+    flexDirection: "row",
+    alignItems: "center",
   },
   filterChipActive: {
-    backgroundColor: "#000000",
-    borderColor: "#000000",
+    backgroundColor: "#8B5CF6",
+    borderColor: "#8B5CF6",
+  },
+  deleteChip: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FECACA",
   },
   assignmentInfoCard: {
     backgroundColor: "#FFFFFF",
@@ -710,7 +760,7 @@ const styles = StyleSheet.create({
   gradeButton: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
     borderRadius: 12,
     alignItems: "center",
   },
@@ -762,6 +812,6 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   modalButtonPrimary: {
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
   },
 });

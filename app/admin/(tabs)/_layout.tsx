@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import AdminRoute from "@/components/AdminRoute";
-import { Home, CalendarDays, BookOpen, Bell, User, Users } from "lucide-react-native";
+import { Home, CalendarDays, BookOpen, Bell, User, Users, ClipboardList } from "lucide-react-native";
 
 export default function AdminTabsLayout() {
   return (
@@ -35,6 +35,14 @@ export default function AdminTabsLayout() {
           options={{
             tabBarIcon: ({ focused, color, size }) => (
               <BookOpen size={size} color={focused ? "#000000" : color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="course-requests"
+          options={{
+            tabBarIcon: ({ focused, color, size }) => (
+              <ClipboardList size={size} color={focused ? "#000000" : color} />
             ),
           }}
         />

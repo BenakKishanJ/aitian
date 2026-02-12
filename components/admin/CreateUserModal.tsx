@@ -14,6 +14,7 @@ import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { X, UserPlus, Eye, EyeOff, ChevronDown } from 'lucide-react-native';
 import { useAdminUsers } from '@/lib/hooks/useAdminUsers';
+import { autoEnrollStudentToCourses } from '@/lib/enrollmentUtils';
 import type { Role, DepartmentId } from '@/types';
 import { DEPARTMENTS } from '@/types/constants';
 
@@ -94,6 +95,26 @@ export function CreateUserModal({
       }
 
       const userId = await createUser(userData);
+
+      // Auto-enroll student in courses if role is student
+      if (role === 'student' && userId) {
+        try {
+          const enrollmentResult = await autoEnrollStudentToCourses(
+            userId,
+            departmentId as DepartmentId,
+            parseInt(semester),
+            section.toUpperCase()
+          );
+
+          if (enrollmentResult.success) {
+            console.log(`Auto-enrolled student in ${enrollmentResult.enrolledCount} courses`);
+          } else {
+            console.error('Auto-enrollment failed:', enrollmentResult.error);
+          }
+        } catch (enrollErr) {
+          console.error('Error during auto-enrollment:', enrollErr);
+        }
+      }
 
       Alert.alert('Success', 'User created successfully!');
       resetForm();

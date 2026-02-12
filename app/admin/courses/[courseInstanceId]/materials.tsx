@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { Search, Plus, X, Upload, Filter, Link, File } from "lucide-react-native";
+import { Search, Plus, X, Upload, Filter, Link, File, Shield, Trash2 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useMaterials } from "@/lib/hooks/useMaterials";
 import { useMaterialUpload } from "@/lib/hooks/useMaterialUpload";
@@ -23,18 +23,21 @@ import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Icon } from "@/components/ui/icon";
+import { collection, query, where, getDocs, writeBatch, deleteDoc, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { COLLECTIONS } from "@/types/constants";
 
-export default function MaterialsScreen() {
+export default function AdminMaterialsScreen() {
   const { courseInstanceId } = useLocalSearchParams<{
     courseInstanceId: string;
   }>();
-  const { role } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>("all");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   // Upload form state
   const [uploadTitle, setUploadTitle] = useState("");
@@ -64,14 +67,11 @@ export default function MaterialsScreen() {
 
   const {
     uploadMaterial,
-    deleteMaterialWithFile,
     isUploading,
     progress,
     error: uploadError,
     resetUpload,
   } = useMaterialUpload();
-
-  const canUpload = role === "teacher" || role === "admin";
 
   const materialTypes = [
     { value: "all", label: "All Types" },
@@ -98,12 +98,60 @@ export default function MaterialsScreen() {
   };
 
   const handleDelete = async (materialId: string) => {
-    try {
-      await deleteMaterial(materialId);
-      Alert.alert("Success", "Material deleted successfully");
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to delete material");
-    }
+    Alert.alert(
+      "Delete Material",
+      "Are you sure you want to delete this material?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMaterial(materialId);
+              Alert.alert("Success", "Material deleted successfully");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete material");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAll = async () => {
+    Alert.alert(
+      "Delete All Materials",
+      "Are you sure you want to delete ALL materials in this course? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete All",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingAll(true);
+            try {
+              const batch = writeBatch(db);
+              const materialsQuery = query(
+                collection(db, COLLECTIONS.MATERIALS),
+                where("courseInstanceId", "==", courseInstanceId)
+              );
+              const materialsSnap = await getDocs(materialsQuery);
+              materialsSnap.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+              });
+              await batch.commit();
+              await refresh();
+              Alert.alert("Success", "All materials deleted successfully");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete materials");
+            } finally {
+              setDeletingAll(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleUpload = async () => {
@@ -160,7 +208,10 @@ export default function MaterialsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <HStack className="justify-between items-center px-4 py-3">
-          <Text className="text-xl font-bold text-black">Study Materials</Text>
+          <HStack space="sm" className="items-center">
+            <Shield size={20} color="#8B5CF6" />
+            <Text className="text-xl font-bold text-black">Admin: Materials</Text>
+          </HStack>
 
           <HStack space="sm">
             {/* Search Icon */}
@@ -185,6 +236,17 @@ export default function MaterialsScreen() {
             >
               <Icon as={Filter} size="md" className="text-black" />
             </TouchableOpacity>
+
+            {/* Delete All Icon */}
+            {materials.length > 0 && (
+              <TouchableOpacity
+                onPress={handleDeleteAll}
+                style={[styles.iconButton, styles.deleteButton]}
+                disabled={deletingAll}
+              >
+                <Icon as={Trash2} size="md" className="text-red-600" />
+              </TouchableOpacity>
+            )}
           </HStack>
         </HStack>
 
@@ -250,9 +312,7 @@ export default function MaterialsScreen() {
               {searchQuery ? "No materials found" : "No materials uploaded yet"}
             </Text>
             <Text className="text-gray-400 text-center text-sm mt-2">
-              {canUpload
-                ? "Upload your first material to get started"
-                : "Materials will appear here once uploaded"}
+              Upload your first material to get started
             </Text>
           </View>
         )}
@@ -261,8 +321,8 @@ export default function MaterialsScreen() {
           <MaterialCard
             key={material.id}
             material={material}
-            role={role!}
-            onDelete={canUpload ? handleDelete : undefined}
+            role="admin"
+            onDelete={handleDelete}
           />
         ))}
 
@@ -285,15 +345,13 @@ export default function MaterialsScreen() {
       </ScrollView>
 
       {/* FAB for Upload */}
-      {canUpload && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setShowUploadModal(true)}
-          activeOpacity={0.8}
-        >
-          <Icon as={Plus} size="xl" className="text-white" />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowUploadModal(true)}
+        activeOpacity={0.8}
+      >
+        <Icon as={Plus} size="xl" className="text-white" />
+      </TouchableOpacity>
 
       {/* Initial Loading */}
       {loading && materials.length === 0 && (
@@ -364,9 +422,12 @@ export default function MaterialsScreen() {
               <VStack space="lg">
                 {/* Header */}
                 <HStack className="justify-between items-center">
-                  <Text className="text-xl font-bold text-black">
-                    Upload Material
-                  </Text>
+                  <HStack space="sm" className="items-center">
+                    <Shield size={20} color="#8B5CF6" />
+                    <Text className="text-xl font-bold text-black">
+                      Upload Material
+                    </Text>
+                  </HStack>
                   <TouchableOpacity onPress={resetUploadForm}>
                     <Icon as={X} size="lg" className="text-gray-500" />
                   </TouchableOpacity>
@@ -430,20 +491,6 @@ export default function MaterialsScreen() {
                     placeholderTextColor="#9CA3AF"
                     multiline
                     numberOfLines={4}
-                  />
-                </VStack>
-
-                {/* File Size */}
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
-                    File Size
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g., 2.5 MB (optional)"
-                    value={uploadFileSize}
-                    onChangeText={setUploadFileSize}
-                    placeholderTextColor="#9CA3AF"
                   />
                 </VStack>
 
@@ -603,6 +650,9 @@ const styles = StyleSheet.create({
   iconButtonActive: {
     backgroundColor: "#000000",
   },
+  deleteButton: {
+    backgroundColor: "#FEE2E2",
+  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -675,7 +725,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -740,8 +790,8 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   typeChipActive: {
-    backgroundColor: "#000000",
-    borderColor: "#000000",
+    backgroundColor: "#8B5CF6",
+    borderColor: "#8B5CF6",
   },
   button: {
     flex: 1,
@@ -756,7 +806,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   buttonPrimary: {
-    backgroundColor: "#000000",
+    backgroundColor: "#8B5CF6",
   },
   modeButton: {
     flex: 1,
@@ -770,7 +820,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   modeButtonActive: {
-    backgroundColor: "#000000",
-    borderColor: "#000000",
+    backgroundColor: "#8B5CF6",
+    borderColor: "#8B5CF6",
   },
 });

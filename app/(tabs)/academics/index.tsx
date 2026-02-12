@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Search, Plus, X } from 'lucide-react-native';
 import { useAuth } from '@/lib/AuthContext';
 import { useCoursesWithEnrollments } from '@/lib/hooks/useCoursesWithEnrollments';
@@ -45,6 +46,8 @@ export default function AcademicsScreen() {
   const [selectedPendingEnrollment, setSelectedPendingEnrollment] = useState<Enrollment | null>(null);
   const [loadingElectives, setLoadingElectives] = useState(false);
   const [electiveError, setElectiveError] = useState<string | null>(null);
+
+  const router = useRouter();
 
   const { courses, enrollments, loading, error, refresh } = useCoursesWithEnrollments({
     searchQuery: searchQuery,
@@ -89,10 +92,29 @@ export default function AcademicsScreen() {
     if (!selectedPendingEnrollment || !user) return;
 
     try {
+      // Find the course instance for the selected course
+      const instancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
+      const instancesQuery = query(
+        instancesRef,
+        where('courseId', '==', courseId),
+        where('isActive', '==', true)
+      );
+
+      const instancesSnap = await getDocs(instancesQuery);
+      
+      if (instancesSnap.empty) {
+        setElectiveError('No active course instance found for this elective. Please contact admin.');
+        return;
+      }
+
+      // Use the first available course instance
+      const courseInstanceId = instancesSnap.docs[0].id;
+
       // Update enrollment with selected elective
       const enrollmentRef = doc(db, COLLECTIONS.ENROLLMENTS, selectedPendingEnrollment.id);
       await updateDoc(enrollmentRef, {
-        courseInstanceId: courseId,
+        courseInstanceId: courseInstanceId,
+        selectedElectiveCourseId: courseId,
         enrollmentStatus: ENROLLMENT_STATUSES.ELECTIVE_ENROLLED,
         updatedAt: Timestamp.now(),
       });
@@ -157,22 +179,25 @@ export default function AcademicsScreen() {
 
     try {
       const requestsRef = collection(db, COLLECTIONS.COURSE_REQUESTS);
-      
+      const requestDocIds: string[] = [];
+
+      // Create each request and collect the document IDs
       for (const request of requests) {
-        await addDoc(requestsRef, {
+        const docRef = await addDoc(requestsRef, {
           ...request,
           teacherId: user.uid,
           teacherName: userData.name,
           status: 'pending',
           requestedAt: Timestamp.now(),
         });
+        requestDocIds.push(docRef.id);
       }
 
-      // Update teacher's pending course IDs
+      // Update teacher's pending course IDs with actual document IDs
       const userRef = doc(db, COLLECTIONS.USERS, user.uid);
       const currentPending = (userData as any).pendingCourseIds || [];
       await updateDoc(userRef, {
-        pendingCourseIds: [...currentPending, ...requests.map((_, i) => `pending-${Date.now()}-${i}`)],
+        pendingCourseIds: [...currentPending, ...requestDocIds],
         updatedAt: Timestamp.now(),
       });
 
@@ -197,6 +222,9 @@ export default function AcademicsScreen() {
     
     if (role === 'student' && enrollment?.enrollmentStatus === ENROLLMENT_STATUSES.ELECTIVE_PENDING) {
       openElectiveSelector(courseInstance, enrollment);
+    } else {
+      // Navigate to course detail page for all other cases
+      router.push(`/(tabs)/academics/${courseInstance.id}`);
     }
   };
 

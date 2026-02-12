@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection,
   query,
@@ -37,6 +37,10 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
   const [enrollments, setEnrollments] = useState<EnrollmentMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Use ref to track and cancel in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
 
   // Fetch courses based on role
   const fetchCourses = useCallback(async () => {
@@ -44,6 +48,18 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
       setLoading(false);
       return;
     }
+
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
+    // Generate unique request ID
+    const currentRequestId = ++requestIdRef.current;
 
     try {
       setLoading(true);
@@ -108,40 +124,72 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
 
         courseInstances = allInstances;
 
-        // Fetch attendance percentages for each course
-        for (const instance of courseInstances) {
+        // Fetch attendance percentages for all courses in batch
+        if (courseInstances.length > 0) {
           try {
+            const instanceIds = courseInstances.map(inst => inst.id);
+            
+            // Get all attendance sessions for these courses
             const sessionsRef = collection(db, COLLECTIONS.ATTENDANCE_SESSIONS);
-            const sessionsQuery = query(
-              sessionsRef,
-              where('courseInstanceId', '==', instance.id)
-            );
-            const sessionsSnap = await getDocs(sessionsQuery);
-            const totalClasses = sessionsSnap.size;
-
-            if (totalClasses > 0) {
-              const sessionIds = sessionsSnap.docs.map((doc) => doc.id);
-              let attendedCount = 0;
-
-              for (let i = 0; i < sessionIds.length; i += 10) {
-                const batchIds = sessionIds.slice(i, i + 10);
-                const recordsRef = collection(db, COLLECTIONS.ATTENDANCE_RECORDS);
-                const recordsQuery = query(
-                  recordsRef,
-                  where('sessionId', 'in', batchIds),
-                  where('studentId', '==', user.uid),
-                  where('status', '==', 'present')
-                );
-                const recordsSnap = await getDocs(recordsQuery);
-                attendedCount += recordsSnap.size;
-              }
-
-              instance.attendancePercentage =
-                totalClasses > 0 ? (attendedCount / totalClasses) * 100 : 0;
+            const sessionBatches: Promise<QuerySnapshot<DocumentData>>[] = [];
+            
+            for (let i = 0; i < instanceIds.length; i += 10) {
+              const batchIds = instanceIds.slice(i, i + 10);
+              const sessionsQuery = query(
+                sessionsRef,
+                where('courseInstanceId', 'in', batchIds)
+              );
+              sessionBatches.push(getDocs(sessionsQuery));
             }
+            
+            const sessionResults = await Promise.all(sessionBatches);
+            const allSessions = sessionResults.flatMap(snap => snap.docs);
+            
+            // Group sessions by courseInstanceId
+            const sessionsByCourse: { [courseId: string]: string[] } = {};
+            allSessions.forEach(doc => {
+              const data = doc.data();
+              const courseId = data.courseInstanceId;
+              if (!sessionsByCourse[courseId]) sessionsByCourse[courseId] = [];
+              sessionsByCourse[courseId].push(doc.id);
+            });
+            
+            // Get all attendance records for these sessions
+            const allSessionIds = allSessions.map(doc => doc.id);
+            const attendanceCounts: { [courseId: string]: number } = {};
+            
+            for (let i = 0; i < allSessionIds.length; i += 10) {
+              const batchIds = allSessionIds.slice(i, i + 10);
+              const recordsRef = collection(db, COLLECTIONS.ATTENDANCE_RECORDS);
+              const recordsQuery = query(
+                recordsRef,
+                where('sessionId', 'in', batchIds),
+                where('studentId', '==', user.uid),
+                where('status', '==', 'present')
+              );
+              const recordsSnap = await getDocs(recordsQuery);
+              
+              // Count by course
+              recordsSnap.docs.forEach(doc => {
+                const sessionId = doc.data().sessionId;
+                const courseId = allSessions.find(s => s.id === sessionId)?.data().courseInstanceId;
+                if (courseId) {
+                  attendanceCounts[courseId] = (attendanceCounts[courseId] || 0) + 1;
+                }
+              });
+            }
+            
+            // Apply attendance percentages
+            courseInstances.forEach(instance => {
+              const sessions = sessionsByCourse[instance.id] || [];
+              const attended = attendanceCounts[instance.id] || 0;
+              instance.attendancePercentage = sessions.length > 0 
+                ? (attended / sessions.length) * 100 
+                : 0;
+            });
           } catch (err) {
             console.error('Error fetching attendance:', err);
-            instance.attendancePercentage = 0;
+            courseInstances.forEach(instance => instance.attendancePercentage = 0);
           }
         }
       } else if (role === 'teacher') {
@@ -158,15 +206,29 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
           (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails
         );
 
-        // Get total students for each course
-        for (const instance of courseInstances) {
-          const enrollmentsRef = collection(db, COLLECTIONS.ENROLLMENTS);
-          const enrollmentsQuery = query(
-            enrollmentsRef,
-            where('courseInstanceId', '==', instance.id)
-          );
-          const enrollmentsSnap = await getDocs(enrollmentsQuery);
-          instance.totalStudents = enrollmentsSnap.size;
+        // Get total students for all courses in batch
+        if (courseInstances.length > 0) {
+          const instanceIds = courseInstances.map(inst => inst.id);
+          const enrollmentCounts: { [courseId: string]: number } = {};
+          
+          for (let i = 0; i < instanceIds.length; i += 10) {
+            const batchIds = instanceIds.slice(i, i + 10);
+            const enrollmentsRef = collection(db, COLLECTIONS.ENROLLMENTS);
+            const enrollmentsQuery = query(
+              enrollmentsRef,
+              where('courseInstanceId', 'in', batchIds)
+            );
+            const enrollmentsSnap = await getDocs(enrollmentsQuery);
+            
+            enrollmentsSnap.docs.forEach(doc => {
+              const courseId = doc.data().courseInstanceId;
+              enrollmentCounts[courseId] = (enrollmentCounts[courseId] || 0) + 1;
+            });
+          }
+          
+          courseInstances.forEach(instance => {
+            instance.totalStudents = enrollmentCounts[instance.id] || 0;
+          });
         }
       } else if (role === 'parent') {
         // Fetch linked student's courses
@@ -231,40 +293,81 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
           (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails
         );
 
-        // Get total students for each course
-        for (const instance of courseInstances) {
-          const enrollmentsRef = collection(db, COLLECTIONS.ENROLLMENTS);
-          const enrollmentsQuery = query(
-            enrollmentsRef,
-            where('courseInstanceId', '==', instance.id)
-          );
-          const enrollmentsSnap = await getDocs(enrollmentsQuery);
-          instance.totalStudents = enrollmentsSnap.size;
+        // Get total students for all courses in batch
+        if (courseInstances.length > 0) {
+          const instanceIds = courseInstances.map(inst => inst.id);
+          const enrollmentCounts: { [courseId: string]: number } = {};
+          
+          for (let i = 0; i < instanceIds.length; i += 10) {
+            const batchIds = instanceIds.slice(i, i + 10);
+            const enrollmentsRef = collection(db, COLLECTIONS.ENROLLMENTS);
+            const enrollmentsQuery = query(
+              enrollmentsRef,
+              where('courseInstanceId', 'in', batchIds)
+            );
+            const enrollmentsSnap = await getDocs(enrollmentsQuery);
+            
+            enrollmentsSnap.docs.forEach(doc => {
+              const courseId = doc.data().courseInstanceId;
+              enrollmentCounts[courseId] = (enrollmentCounts[courseId] || 0) + 1;
+            });
+          }
+          
+          courseInstances.forEach(instance => {
+            instance.totalStudents = enrollmentCounts[instance.id] || 0;
+          });
         }
       }
 
-      // Fetch course details for all instances
-      for (const instance of courseInstances) {
-        const courseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, instance.courseId));
-        if (courseDoc.exists()) {
-          instance.course = { id: courseDoc.id, ...courseDoc.data() } as Course;
-        }
-
-        // Fetch teacher names
-        if (instance.teacherIds && instance.teacherIds.length > 0) {
-          const teacherNames: string[] = [];
-          for (const teacherId of instance.teacherIds) {
-            try {
-              const teacherDoc = await getDoc(doc(db, COLLECTIONS.USERS, teacherId));
-              if (teacherDoc.exists()) {
-                teacherNames.push(teacherDoc.data().name || 'Unknown');
-              }
-            } catch (err) {
-              console.error('Error fetching teacher:', err);
-            }
+      // Fetch course details and teacher names in batch
+      if (courseInstances.length > 0) {
+        // Collect all unique courseIds and teacherIds
+        const courseIds = [...new Set(courseInstances.map(inst => inst.courseId).filter(Boolean))];
+        const teacherIds = [...new Set(courseInstances.flatMap(inst => inst.teacherIds || []))];
+        
+        // Fetch all courses in batch
+        const courseData: { [id: string]: Course } = {};
+        if (courseIds.length > 0) {
+          const courseBatches: Promise<QuerySnapshot<DocumentData>>[] = [];
+          for (let i = 0; i < courseIds.length; i += 10) {
+            const batchIds = courseIds.slice(i, i + 10);
+            const coursesRef = collection(db, COLLECTIONS.COURSES);
+            const coursesQuery = query(coursesRef, where('__name__', 'in', batchIds));
+            courseBatches.push(getDocs(coursesQuery));
           }
-          instance.teacherNames = teacherNames;
+          
+          const courseResults = await Promise.all(courseBatches);
+          courseResults.flatMap(snap => snap.docs).forEach(doc => {
+            courseData[doc.id] = { id: doc.id, ...doc.data() } as Course;
+          });
         }
+        
+        // Fetch all teacher names in batch
+        const teacherData: { [id: string]: string } = {};
+        if (teacherIds.length > 0) {
+          const teacherBatches: Promise<QuerySnapshot<DocumentData>>[] = [];
+          for (let i = 0; i < teacherIds.length; i += 10) {
+            const batchIds = teacherIds.slice(i, i + 10);
+            const usersRef = collection(db, COLLECTIONS.USERS);
+            const usersQuery = query(usersRef, where('__name__', 'in', batchIds));
+            teacherBatches.push(getDocs(usersQuery));
+          }
+          
+          const teacherResults = await Promise.all(teacherBatches);
+          teacherResults.flatMap(snap => snap.docs).forEach(doc => {
+            teacherData[doc.id] = doc.data().name || 'Unknown';
+          });
+        }
+        
+        // Apply data to instances
+        courseInstances.forEach(instance => {
+          if (instance.courseId && courseData[instance.courseId]) {
+            instance.course = courseData[instance.courseId];
+          }
+          if (instance.teacherIds && instance.teacherIds.length > 0) {
+            instance.teacherNames = instance.teacherIds.map(id => teacherData[id] || 'Unknown');
+          }
+        });
       }
 
       // Apply search filter if provided
@@ -279,13 +382,23 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
         );
       }
 
-      setCourses(filteredCourses);
-      setEnrollments(enrollmentMap);
-      setLoading(false);
+      // Only update state if this is still the latest request and not aborted
+      if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+        setCourses(filteredCourses);
+        setEnrollments(enrollmentMap);
+        setLoading(false);
+      }
     } catch (err: any) {
+      // Don't update error state if request was aborted
+      if (err.name === 'AbortError' || abortController.signal.aborted) {
+        return;
+      }
       console.error('Error fetching courses:', err);
-      setError(err.message || 'Failed to fetch courses');
-      setLoading(false);
+      // Only update state if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        setError(err.message || 'Failed to fetch courses');
+        setLoading(false);
+      }
     }
   }, [user, userData, role, searchQuery]);
 
@@ -295,6 +408,13 @@ export function useCoursesWithEnrollments(options: UseCourseWithEnrollmentsOptio
 
   useEffect(() => {
     fetchCourses();
+    
+    // Cleanup: abort in-flight requests when dependencies change or component unmounts
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchCourses]);
 
   return {

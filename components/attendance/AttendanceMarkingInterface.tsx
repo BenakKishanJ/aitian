@@ -10,7 +10,7 @@ import {
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { Check, X, Users, CheckCircle2, XCircle, MinusCircle } from 'lucide-react-native';
+import { Check, X, Users, CheckCircle2, XCircle, MinusCircle, Clock, AlertCircle } from 'lucide-react-native';
 import { useAttendanceMarking } from '@/lib/hooks/useAttendanceMarking';
 import type { AttendanceStatus } from '@/types';
 
@@ -43,6 +43,10 @@ function StudentCard({
         return { bg: '#D1FAE5', border: '#10B981', text: '#059669' };
       case 'absent':
         return { bg: '#FEE2E2', border: '#EF4444', text: '#DC2626' };
+      case 'late':
+        return { bg: '#FEF3C7', border: '#F59E0B', text: '#D97706' };
+      case 'excused':
+        return { bg: '#EDE9FE', border: '#8B5CF6', text: '#7C3AED' };
       default:
         return { bg: '#F3F4F6', border: '#E5E7EB', text: '#9CA3AF' };
     }
@@ -54,6 +58,10 @@ function StudentCard({
         return <CheckCircle2 size={24} color="#10B981" />;
       case 'absent':
         return <XCircle size={24} color="#EF4444" />;
+      case 'late':
+        return <Clock size={24} color="#F59E0B" />;
+      case 'excused':
+        return <AlertCircle size={24} color="#8B5CF6" />;
       default:
         return <MinusCircle size={24} color="#9CA3AF" />;
     }
@@ -148,7 +156,7 @@ export function AttendanceMarkingInterface({
     <View style={styles.container}>
       {/* Stats Bar */}
       <View style={styles.statsBar}>
-        <HStack space="lg" style={styles.statsContent}>
+        <HStack space="md" style={styles.statsContent}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.total}</Text>
             <Text style={styles.statLabel}>Total</Text>
@@ -160,6 +168,14 @@ export function AttendanceMarkingInterface({
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: '#EF4444' }]}>{stats.absent}</Text>
             <Text style={styles.statLabel}>Absent</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#F59E0B' }]}>{stats.late}</Text>
+            <Text style={styles.statLabel}>Late</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#8B5CF6' }]}>{stats.excused}</Text>
+            <Text style={styles.statLabel}>Excused</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: '#9CA3AF' }]}>{stats.notMarked}</Text>
@@ -198,7 +214,7 @@ export function AttendanceMarkingInterface({
       {/* Instructions */}
       <View style={styles.instructions}>
         <Text style={styles.instructionsText}>
-          Tap on a student to toggle attendance (Present → Absent → Not Marked)
+          Tap on a student to toggle attendance (Present → Absent → Late → Excused)
         </Text>
       </View>
 

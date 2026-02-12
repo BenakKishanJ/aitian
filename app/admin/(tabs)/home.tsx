@@ -27,6 +27,7 @@ import {
   Settings,
   Plus,
   ChevronRight,
+  ClipboardList,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useAdminData } from "@/lib/hooks/useAdminData";
@@ -213,10 +214,10 @@ export default function AdminHomeScreen() {
               onPress={() => router.push("/admin/academics")}
             />
             <QuickAction
-              icon={Building2}
-              label="Departments"
-              color="#10B981"
-              onPress={() => router.push("/admin/departments")}
+              icon={ClipboardList}
+              label="Course Requests"
+              color="#F59E0B"
+              onPress={() => router.push("/admin/course-requests")}
             />
             <QuickAction
               icon={Bell}
@@ -240,10 +241,15 @@ export default function AdminHomeScreen() {
                 <Text style={styles.summaryValue}>{stats.todayClasses}</Text>
                 <Text style={styles.summaryLabel}>Classes Today</Text>
               </VStack>
-              <VStack space="xs" style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{stats.pendingApprovals}</Text>
-                <Text style={styles.summaryLabel}>Pending Approvals</Text>
-              </VStack>
+              <TouchableOpacity 
+                style={styles.summaryItem}
+                onPress={() => router.push("/admin/course-requests")}
+              >
+                <VStack space="xs">
+                  <Text style={styles.summaryValue}>{stats.pendingApprovals}</Text>
+                  <Text style={styles.summaryLabel}>Pending Approvals</Text>
+                </VStack>
+              </TouchableOpacity>
               <VStack space="xs" style={styles.summaryItem}>
                 <Text style={styles.summaryValue}>{stats.activeUsers}</Text>
                 <Text style={styles.summaryLabel}>Active Users</Text>

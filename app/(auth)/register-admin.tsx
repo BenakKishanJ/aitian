@@ -24,6 +24,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { DEPARTMENTS as ACADEMIC_DEPARTMENTS } from "@/types/constants";
 
 /* Gluestack UI (local re-exports) */
 import { VStack } from "@/components/ui/vstack";
@@ -51,13 +52,9 @@ import {
 import { Alert, AlertText, AlertIcon } from "@/components/ui/alert";
 import { Icon } from "@/components/ui/icon";
 
-// Mock data
+// Admin departments include academic departments plus admin-specific ones
 const DEPARTMENTS = [
-  { id: "cse", name: "Computer Science & Engineering" },
-  { id: "ece", name: "Electronics & Communication" },
-  { id: "me", name: "Mechanical Engineering" },
-  { id: "cv", name: "Civil Engineering" },
-  { id: "ee", name: "Electrical Engineering" },
+  ...ACADEMIC_DEPARTMENTS.map(dept => ({ id: dept.id, name: `${dept.code} - ${dept.name}` })),
   { id: "admin", name: "Administration" },
   { id: "exam", name: "Examination Department" },
   { id: "academic", name: "Academic Office" },

@@ -20,6 +20,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { DEPARTMENTS } from "@/types/constants";
 
 /* Gluestack UI (local re-exports) */
 import { VStack } from "@/components/ui/vstack";
@@ -45,15 +46,6 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
-
-// Mock departments
-const DEPARTMENTS = [
-  { id: "cse", name: "Computer Science & Engineering", code: "CSE" },
-  { id: "ece", name: "Electronics & Communication", code: "ECE" },
-  { id: "me", name: "Mechanical Engineering", code: "ME" },
-  { id: "cv", name: "Civil Engineering", code: "CV" },
-  { id: "ee", name: "Electrical Engineering", code: "EE" },
-];
 
 export default function RegisterTeacherScreen() {
   const [loading, setLoading] = useState(false);
@@ -405,7 +397,7 @@ export default function RegisterTeacherScreen() {
                       {DEPARTMENTS.map((dept) => (
                         <SelectItem
                           key={dept.id}
-                          label={dept.name}
+                          label={`${dept.code} - ${dept.name}`}
                           value={dept.id}
                         />
                       ))}

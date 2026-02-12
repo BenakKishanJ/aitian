@@ -153,7 +153,7 @@ export function useNotificationService() {
       studentIds: string[],
       courseName: string,
       date: Date,
-      status: 'present' | 'absent' | 'late'
+      status: 'present' | 'absent' | 'late' | 'excused'
     ) => {
       const formattedDate = date.toLocaleDateString('en-US', {
         month: 'short',
@@ -175,6 +175,73 @@ export function useNotificationService() {
     [sendNotification]
   );
 
+  const notifyLowAttendance = useCallback(
+    async (
+      studentId: string,
+      courseName: string,
+      percentage: number
+    ) => {
+      await sendNotification({
+        recipientIds: [studentId],
+        title: 'Attendance Alert',
+        body: `Your attendance for ${courseName} is ${percentage.toFixed(1)}%. Please attend classes regularly to avoid falling below 75%.`,
+        type: 'attendance_marked',
+        data: {
+          screen: 'attendance',
+        },
+      });
+    },
+    [sendNotification]
+  );
+
+  const notifyParentAttendance = useCallback(
+    async (
+      parentIds: string[],
+      studentName: string,
+      courseName: string,
+      date: Date,
+      status: 'present' | 'absent' | 'late' | 'excused'
+    ) => {
+      const formattedDate = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+
+      const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+
+      await sendNotification({
+        recipientIds: parentIds,
+        title: 'Child Attendance Update',
+        body: `${studentName}'s attendance for ${courseName} on ${formattedDate}: ${statusText}`,
+        type: 'attendance_marked',
+        data: {
+          screen: 'attendance',
+        },
+      });
+    },
+    [sendNotification]
+  );
+
+  const notifyParentLowAttendance = useCallback(
+    async (
+      parentIds: string[],
+      studentName: string,
+      courseName: string,
+      percentage: number
+    ) => {
+      await sendNotification({
+        recipientIds: parentIds,
+        title: 'Child Attendance Alert',
+        body: `${studentName}'s attendance for ${courseName} is ${percentage.toFixed(1)}%. Please ensure regular attendance.`,
+        type: 'attendance_marked',
+        data: {
+          screen: 'attendance',
+        },
+      });
+    },
+    [sendNotification]
+  );
+
   return {
     sendNotification,
     notifyAssignmentCreated,
@@ -182,5 +249,8 @@ export function useNotificationService() {
     notifyMaterialUploaded,
     notifyDiscussionReply,
     notifyAttendanceMarked,
+    notifyLowAttendance,
+    notifyParentAttendance,
+    notifyParentLowAttendance,
   };
 }

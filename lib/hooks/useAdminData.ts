@@ -103,10 +103,16 @@ export function useAdminData() {
       // Get departments count
       const departmentsSnap = await getCountFromServer(collection(db, 'departments'));
 
-      // Get pending approvals (parent links with status pending)
-      const pendingApprovalsSnap = await getCountFromServer(
+      // Get pending approvals (parent links + course requests with status pending)
+      const pendingParentLinksSnap = await getCountFromServer(
         query(collection(db, 'parentLinks'), where('status', '==', 'pending'))
       );
+
+      const pendingCourseRequestsSnap = await getCountFromServer(
+        query(collection(db, 'courseRequests'), where('status', '==', 'pending'))
+      );
+
+      const totalPendingApprovals = pendingParentLinksSnap.data().count + pendingCourseRequestsSnap.data().count;
 
       // Get total assignments
       const assignmentsSnap = await getCountFromServer(collection(db, 'assignments'));
@@ -139,7 +145,7 @@ export function useAdminData() {
         totalCourses: coursesSnap.data().count,
         totalCourseInstances: courseInstancesSnap.data().count,
         totalDepartments: departmentsSnap.data().count,
-        pendingApprovals: pendingApprovalsSnap.data().count,
+        pendingApprovals: totalPendingApprovals,
         totalAssignments: assignmentsSnap.data().count,
         todayClasses: todayClassesSnap.data().count,
         recentLogins: 0, // Would need lastLogin field

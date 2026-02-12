@@ -42,6 +42,12 @@ export function useCourseDetails(courseInstanceId: string) {
       } as CourseInstance;
 
       // Fetch course details
+      if (!instanceData.courseId) {
+        setError("Course ID not available");
+        setLoading(false);
+        return;
+      }
+
       const courseDoc = await getDoc(doc(db, "courses", instanceData.courseId));
 
       if (!courseDoc.exists()) {

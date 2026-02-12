@@ -91,9 +91,43 @@ export default function CourseRequestsScreen() {
 
     setProcessing(true);
     try {
-      // Create course instance
+      // First, check if a course with this name already exists
+      const coursesRef = collection(db, COLLECTIONS.COURSES);
+      const existingCourseQuery = query(
+        coursesRef,
+        where('name', '==', request.courseName),
+        where('departmentId', '==', request.departmentId),
+        where('semester', '==', request.semester)
+      );
+      const existingCourseSnap = await getDocs(existingCourseQuery);
+
+      let courseId: string;
+
+      if (!existingCourseSnap.empty) {
+        // Use existing course
+        courseId = existingCourseSnap.docs[0].id;
+      } else {
+        // Create a new course
+        const courseRef = await addDoc(collection(db, COLLECTIONS.COURSES), {
+          courseCode: 'TEMP-' + Date.now(), // Temporary code, admin should update
+          name: request.courseName,
+          departmentId: request.departmentId,
+          semester: request.semester,
+          credits: 0, // Should be set by admin
+          isElective: false,
+          metadata: {
+            description: `Course requested by ${request.teacherName}. Please update course code and credits.`,
+          },
+          createdBy: user.uid,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+        courseId = courseRef.id;
+      }
+
+      // Create course instance with proper courseId
       const courseInstanceRef = await addDoc(collection(db, COLLECTIONS.COURSE_INSTANCES), {
-        courseId: '', // Will need to create course first or link to existing
+        courseId: courseId,
         departmentId: request.departmentId,
         semester: request.semester,
         section: request.section,
@@ -120,7 +154,7 @@ export default function CourseRequestsScreen() {
       if (teacherDoc.exists()) {
         const currentApproved = teacherDoc.data().approvedCourseIds || [];
         const currentPending = teacherDoc.data().pendingCourseIds || [];
-        
+
         await updateDoc(teacherRef, {
           approvedCourseIds: [...currentApproved, courseInstanceRef.id],
           pendingCourseIds: currentPending.filter((id: string) => id !== request.id),

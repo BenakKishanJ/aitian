@@ -151,9 +151,29 @@ export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[keyof typeof R
 export const ATTENDANCE_STATUSES = {
   PRESENT: 'present',
   ABSENT: 'absent',
+  LATE: 'late',
+  EXCUSED: 'excused',
 } as const;
 
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[keyof typeof ATTENDANCE_STATUSES];
+
+/**
+ * Get attendance status display info
+ */
+export function getAttendanceStatusInfo(status: AttendanceStatus | null) {
+  switch (status) {
+    case 'present':
+      return { label: 'Present', color: '#10B981', bgColor: '#D1FAE5' };
+    case 'absent':
+      return { label: 'Absent', color: '#EF4444', bgColor: '#FEE2E2' };
+    case 'late':
+      return { label: 'Late', color: '#F59E0B', bgColor: '#FEF3C7' };
+    case 'excused':
+      return { label: 'Excused', color: '#8B5CF6', bgColor: '#EDE9FE' };
+    default:
+      return { label: 'Not Marked', color: '#9CA3AF', bgColor: '#F3F4F6' };
+  }
+}
 
 /**
  * Updated Grade letters based on new grading scale
@@ -169,6 +189,18 @@ export const GRADES = {
 } as const;
 
 export type Grade = (typeof GRADES)[keyof typeof GRADES];
+
+/**
+ * Semesters
+ */
+export const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
+/**
+ * Sections
+ */
+export const SECTIONS = ['A', 'B', 'C', 'D'] as const;
+
+export type Section = (typeof SECTIONS)[number];
 
 /**
  * Enrollment types

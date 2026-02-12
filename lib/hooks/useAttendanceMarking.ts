@@ -42,6 +42,8 @@ export function useAttendanceMarking(options: UseAttendanceMarkingOptions = {}) 
     total: 0,
     present: 0,
     absent: 0,
+    late: 0,
+    excused: 0,
     notMarked: 0,
   });
 
@@ -73,21 +75,24 @@ export function useAttendanceMarking(options: UseAttendanceMarkingOptions = {}) 
         return;
       }
 
-      // Fetch student details
+      // Fetch student details in batches (Firestore 'in' queries limited to 10 items)
       const studentsData: StudentWithAttendance[] = [];
-      for (const studentId of studentIds) {
-        const studentDoc = await getDocs(
-          query(collection(db, 'users'), where('__name__', '==', studentId))
-        );
-        if (!studentDoc.empty) {
-          const data = studentDoc.docs[0].data();
+      const usersRef = collection(db, 'users');
+      
+      for (let i = 0; i < studentIds.length; i += 10) {
+        const batchIds = studentIds.slice(i, i + 10);
+        const batchQuery = query(usersRef, where('__name__', 'in', batchIds));
+        const batchSnap = await getDocs(batchQuery);
+        
+        batchSnap.docs.forEach((doc) => {
+          const data = doc.data();
           studentsData.push({
-            id: studentId,
+            id: doc.id,
             name: data.name || 'Unknown',
             usn: data.usn,
             status: null,
           });
-        }
+        });
       }
 
       // Get existing attendance records for this session
@@ -119,11 +124,15 @@ export function useAttendanceMarking(options: UseAttendanceMarkingOptions = {}) 
       // Calculate stats
       const present = attendanceRecords.filter((r) => r.status === 'present').length;
       const absent = attendanceRecords.filter((r) => r.status === 'absent').length;
+      const late = attendanceRecords.filter((r) => r.status === 'late').length;
+      const excused = attendanceRecords.filter((r) => r.status === 'excused').length;
       setStats({
         total: studentsData.length,
         present,
         absent,
-        notMarked: studentsData.length - present - absent,
+        late,
+        excused,
+        notMarked: studentsData.length - present - absent - late - excused,
       });
       
       setLoading(false);
@@ -169,11 +178,15 @@ export function useAttendanceMarking(options: UseAttendanceMarkingOptions = {}) 
         // Update stats
         const present = updatedRecords.filter((r) => r.status === 'present').length;
         const absent = updatedRecords.filter((r) => r.status === 'absent').length;
+        const late = updatedRecords.filter((r) => r.status === 'late').length;
+        const excused = updatedRecords.filter((r) => r.status === 'excused').length;
         setStats((prev) => ({
           ...prev,
           present,
           absent,
-          notMarked: prev.total - present - absent,
+          late,
+          excused,
+          notMarked: prev.total - present - absent - late - excused,
         }));
       },
       (err) => {
@@ -279,18 +292,27 @@ export function useAttendanceMarking(options: UseAttendanceMarkingOptions = {}) 
     }
   };
 
-  // Toggle attendance (present -> absent -> not marked)
+  // Toggle attendance (present -> absent -> late -> excused -> not marked)
   const toggleAttendance = async (studentId: string) => {
     const student = students.find((s) => s.id === studentId);
     if (!student) return;
 
     let newStatus: AttendanceStatus;
-    if (student.status === 'present') {
-      newStatus = 'absent';
-    } else if (student.status === 'absent') {
-      newStatus = 'present';
-    } else {
-      newStatus = 'present';
+    switch (student.status) {
+      case 'present':
+        newStatus = 'absent';
+        break;
+      case 'absent':
+        newStatus = 'late';
+        break;
+      case 'late':
+        newStatus = 'excused';
+        break;
+      case 'excused':
+        newStatus = 'present';
+        break;
+      default:
+        newStatus = 'present';
     }
 
     await markAttendance(studentId, newStatus);
