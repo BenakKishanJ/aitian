@@ -85,7 +85,6 @@ export default function AdminCoursesScreen() {
   const [instanceSection, setInstanceSection] = useState("A");
   const [instanceTeacherId, setInstanceTeacherId] = useState("");
   const [creating, setCreating] = useState(false);
-  const [autoEnrolling, setAutoEnrolling] = useState(false);
 
   useEffect(() => {
     fetchCourses();
@@ -173,22 +172,9 @@ export default function AdminCoursesScreen() {
         newInstance,
       );
 
-      // Auto-enroll students if it's a mandatory course
-      if (!selectedCourse.isElective) {
-        setAutoEnrolling(true);
-        await autoEnrollStudents(
-          instanceRef.id,
-          selectedCourse.departmentId,
-          selectedCourse.semester,
-          instanceSection.trim(),
-        );
-      }
-
       Alert.alert(
         "Success",
-        selectedCourse.isElective
-          ? "Course instance created. Students can now enroll manually."
-          : "Course instance created and students auto-enrolled!",
+        "Course instance created successfully!",
       );
 
       resetInstanceForm();
@@ -199,57 +185,10 @@ export default function AdminCoursesScreen() {
       Alert.alert("Error", error.message || "Failed to create course instance");
     } finally {
       setCreating(false);
-      setAutoEnrolling(false);
     }
   };
 
-  const autoEnrollStudents = async (
-    courseInstanceId: string,
-    departmentId: string,
-    semester: number,
-    section: string,
-  ) => {
-    try {
-      console.log("Auto-enrolling students:", {
-        courseInstanceId,
-        departmentId,
-        semester,
-        section,
-      });
 
-      // Find all students in this department, semester, and section
-      const usersRef = collection(db, "users");
-      const studentsQuery = query(
-        usersRef,
-        where("role", "==", "student"),
-        where("department", "==", departmentId),
-        where("semester", "==", semester),
-        where("section", "==", section),
-      );
-
-      const studentsSnap = await getDocs(studentsQuery);
-      console.log(`Found ${studentsSnap.size} students to enroll`);
-
-      // Create enrollment for each student
-      const enrollmentPromises = studentsSnap.docs.map((studentDoc) => {
-        const enrollment = {
-          studentId: studentDoc.id,
-          courseInstanceId,
-          type: "mandatory",
-          enrolledAt: serverTimestamp(),
-        };
-        return addDoc(collection(db, "enrollments"), enrollment);
-      });
-
-      await Promise.all(enrollmentPromises);
-      console.log(
-        `Successfully enrolled ${studentsSnap.size} students automatically`,
-      );
-    } catch (error) {
-      console.error("Error auto-enrolling students:", error);
-      // Don't throw - instance creation should still succeed
-    }
-  };
 
   const handleDeleteCourse = async (course: Course) => {
     Alert.alert(
@@ -711,15 +650,9 @@ export default function AdminCoursesScreen() {
                         {selectedCourse.semester} •{" "}
                         {selectedCourse.departmentId.toUpperCase()}
                       </Text>
-                      {selectedCourse.isElective ? (
-                        <Text className="text-sm text-blue-600 mt-2">
-                          ℹ️ Elective: Students will enroll manually
-                        </Text>
-                      ) : (
-                        <Text className="text-sm text-green-700 mt-2">
-                          ✅ Mandatory: Students will be auto-enrolled
-                        </Text>
-                      )}
+                      <Text className="text-sm text-gray-600 mt-2">
+                        Course Type: {selectedCourse.isElective ? 'Elective' : 'Mandatory'}
+                      </Text>
                     </View>
 
                     <VStack space="xs">
@@ -753,15 +686,6 @@ export default function AdminCoursesScreen() {
                       </Text>
                     </VStack>
 
-                    {autoEnrolling && (
-                      <View style={styles.enrollingBox}>
-                        <ActivityIndicator size="small" color="#10B981" />
-                        <Text className="text-sm text-gray-700 ml-2">
-                          Auto-enrolling students...
-                        </Text>
-                      </View>
-                    )}
-
                     <HStack space="sm" className="mt-4">
                       <TouchableOpacity
                         onPress={() => {
@@ -770,7 +694,7 @@ export default function AdminCoursesScreen() {
                           setSelectedCourse(null);
                         }}
                         style={[styles.button, styles.buttonSecondary]}
-                        disabled={creating || autoEnrolling}
+                        disabled={creating}
                       >
                         <Text className="text-black font-semibold">Cancel</Text>
                       </TouchableOpacity>
@@ -778,7 +702,7 @@ export default function AdminCoursesScreen() {
                       <TouchableOpacity
                         onPress={handleCreateInstance}
                         style={[styles.button, styles.buttonPrimary]}
-                        disabled={creating || autoEnrolling}
+                        disabled={creating}
                       >
                         {creating ? (
                           <ActivityIndicator size="small" color="#FFFFFF" />

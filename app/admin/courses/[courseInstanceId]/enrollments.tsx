@@ -34,7 +34,7 @@ import { useCourseDetails } from "@/lib/hooks/useCourseDetails";
 import { collection, query, where, getDocs, writeBatch, deleteDoc, doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { COLLECTIONS } from "@/types/constants";
-import type { Enrollment, UserProfile } from "@/types";
+import type { Enrollment, BaseUserData } from "@/types";
 
 interface EnrolledStudent extends Enrollment {
   studentName?: string;
@@ -42,6 +42,7 @@ interface EnrolledStudent extends Enrollment {
   studentRollNumber?: string;
   studentDepartment?: string;
   studentSemester?: number;
+  status?: string;
 }
 
 export default function AdminEnrolledStudentsScreen() {
@@ -70,38 +71,78 @@ export default function AdminEnrolledStudentsScreen() {
     try {
       setLoading(true);
       
-      // Get all enrollments for this course
-      const enrollmentsQuery = query(
-        collection(db, COLLECTIONS.ENROLLMENTS),
-        where("courseInstanceId", "==", courseInstanceId)
-      );
-      const enrollmentsSnap = await getDocs(enrollmentsQuery);
+      // First, check if this is an elective course instance
+      const instanceRef = doc(db, COLLECTIONS.COURSE_INSTANCES, courseInstanceId);
+      const instanceSnap = await getDoc(instanceRef);
+      const instanceData = instanceSnap.data();
+      const isElective = instanceData?.electiveSlotId != null;
       
       const enrolledStudents: EnrolledStudent[] = [];
       
-      for (const enrollmentDoc of enrollmentsSnap.docs) {
-        const enrollmentData = enrollmentDoc.data() as Enrollment;
+      if (isElective) {
+        // For elective courses, fetch from ELECTIVE_SELECTIONS
+        const selectionsQuery = query(
+          collection(db, COLLECTIONS.ELECTIVE_SELECTIONS),
+          where("instanceId", "==", courseInstanceId)
+        );
+        const selectionsSnap = await getDocs(selectionsQuery);
         
-        // Get student details
-        const studentRef = doc(db, COLLECTIONS.USERS, enrollmentData.studentId);
-        const studentSnap = await getDoc(studentRef);
+        for (const selectionDoc of selectionsSnap.docs) {
+          const selectionData = selectionDoc.data();
+          
+          // Get student details
+          const studentRef = doc(db, COLLECTIONS.USERS, selectionData.studentId);
+          const studentSnap = await getDoc(studentRef);
+          
+          if (studentSnap.exists()) {
+            const studentData = studentSnap.data() as BaseUserData;
+            enrolledStudents.push({
+              id: selectionDoc.id,
+              studentId: selectionData.studentId,
+              courseInstanceId: courseInstanceId,
+              studentName: studentData.displayName || studentData.name,
+              studentEmail: studentData.email,
+              studentRollNumber: studentData.rollNumber,
+              studentDepartment: studentData.departmentId,
+              studentSemester: studentData.semester,
+              enrollmentType: "elective",
+              enrollmentStatus: "elective-enrolled",
+              enrolledAt: selectionData.selectedAt,
+            } as EnrolledStudent);
+          }
+        }
+      } else {
+        // For regular courses, fetch from ENROLLMENTS
+        const enrollmentsQuery = query(
+          collection(db, COLLECTIONS.ENROLLMENTS),
+          where("courseInstanceId", "==", courseInstanceId)
+        );
+        const enrollmentsSnap = await getDocs(enrollmentsQuery);
         
-        if (studentSnap.exists()) {
-          const studentData = studentSnap.data() as UserProfile;
-          enrolledStudents.push({
-            ...enrollmentData,
-            id: enrollmentDoc.id,
-            studentName: studentData.displayName || studentData.name,
-            studentEmail: studentData.email,
-            studentRollNumber: studentData.rollNumber,
-            studentDepartment: studentData.departmentId,
-            studentSemester: studentData.semester,
-          });
-        } else {
-          enrolledStudents.push({
-            ...enrollmentData,
-            id: enrollmentDoc.id,
-          });
+        for (const enrollmentDoc of enrollmentsSnap.docs) {
+          const enrollmentData = enrollmentDoc.data() as Enrollment;
+          
+          // Get student details
+          const studentRef = doc(db, COLLECTIONS.USERS, enrollmentData.studentId);
+          const studentSnap = await getDoc(studentRef);
+          
+          if (studentSnap.exists()) {
+            const studentData = studentSnap.data() as BaseUserData;
+            enrolledStudents.push({
+              ...enrollmentData,
+              id: enrollmentDoc.id,
+              studentName: studentData.displayName || studentData.name,
+              studentEmail: studentData.email,
+              studentRollNumber: studentData.rollNumber,
+              studentDepartment: studentData.departmentId,
+              studentSemester: studentData.semester,
+            });
+          } else {
+            enrolledStudents.push({
+              ...enrollmentData,
+              id: enrollmentDoc.id,
+            });
+          }
         }
       }
       
@@ -216,7 +257,7 @@ export default function AdminEnrolledStudentsScreen() {
 
       const studentDoc = usersSnap.docs[0];
       const studentId = studentDoc.id;
-      const studentData = studentDoc.data() as UserProfile;
+      const studentData = studentDoc.data() as BaseUserData;
 
       // Check if already enrolled
       const existingEnrollmentQuery = query(
@@ -254,77 +295,6 @@ export default function AdminEnrolledStudentsScreen() {
     } finally {
       setAddingStudent(false);
     }
-  };
-
-  const handleAutoEnroll = async () => {
-    if (!courseDetails?.course) {
-      Alert.alert("Error", "Course details not available");
-      return;
-    }
-
-    Alert.alert(
-      "Auto-Enroll Students",
-      `This will enroll all students from ${courseDetails.course.departmentId?.toUpperCase()} department, Semester ${courseDetails.semester}, Section ${courseDetails.section} who are not already enrolled. Continue?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Auto-Enroll",
-          onPress: async () => {
-            setAddingStudent(true);
-            try {
-              // Find all students matching department, semester, and section
-              const studentsQuery = query(
-                collection(db, COLLECTIONS.USERS),
-                where("role", "==", "student"),
-                where("departmentId", "==", courseDetails.course.departmentId),
-                where("semester", "==", courseDetails.semester),
-                where("section", "==", courseDetails.section)
-              );
-              const studentsSnap = await getDocs(studentsQuery);
-
-              let enrolledCount = 0;
-              const batch = writeBatch(db);
-
-              for (const studentDoc of studentsSnap.docs) {
-                const studentId = studentDoc.id;
-
-                // Check if already enrolled
-                const existingEnrollmentQuery = query(
-                  collection(db, COLLECTIONS.ENROLLMENTS),
-                  where("courseInstanceId", "==", courseInstanceId),
-                  where("studentId", "==", studentId)
-                );
-                const existingEnrollmentSnap = await getDocs(existingEnrollmentQuery);
-
-                if (existingEnrollmentSnap.empty) {
-                  // Create enrollment
-                  const enrollmentRef = doc(collection(db, COLLECTIONS.ENROLLMENTS));
-                  batch.set(enrollmentRef, {
-                    studentId: studentId,
-                    courseInstanceId: courseInstanceId,
-                    courseId: courseDetails.course?.id,
-                    enrollmentType: "auto",
-                    status: "auto-enrolled",
-                    enrolledAt: new Date(),
-                    enrolledBy: user?.uid,
-                  });
-                  enrolledCount++;
-                }
-              }
-
-              await batch.commit();
-              await fetchEnrolledStudents();
-              Alert.alert("Success", `${enrolledCount} students have been auto-enrolled`);
-            } catch (error) {
-              console.error("Error auto-enrolling students:", error);
-              Alert.alert("Error", "Failed to auto-enroll students");
-            } finally {
-              setAddingStudent(false);
-            }
-          },
-        },
-      ]
-    );
   };
 
   const filteredStudents = students.filter((student) => {
@@ -474,19 +444,8 @@ export default function AdminEnrolledStudentsScreen() {
             <Text className="text-gray-400 text-sm mt-2 text-center px-8">
               {searchQuery
                 ? "Try a different search term"
-                : "Add students manually or use auto-enroll to add students from this department/semester/section"}
+                : "Students will be automatically enrolled when they log in based on their department, semester, and section."}
             </Text>
-            {!searchQuery && (
-              <TouchableOpacity
-                style={styles.autoEnrollButton}
-                onPress={handleAutoEnroll}
-              >
-                <HStack space="sm" className="items-center">
-                  <GraduationCap size={20} color="#FFFFFF" />
-                  <Text className="text-white font-semibold">Auto-Enroll Students</Text>
-                </HStack>
-              </TouchableOpacity>
-            )}
           </View>
         ) : (
           <VStack space="sm">
@@ -606,32 +565,6 @@ export default function AdminEnrolledStudentsScreen() {
                     <HStack space="sm" className="items-center">
                       <UserPlus size={20} color="#FFFFFF" />
                       <Text className="text-white font-semibold">Add Student</Text>
-                    </HStack>
-                  )}
-                </TouchableOpacity>
-
-                {/* Divider */}
-                <View style={styles.divider}>
-                  <Text className="text-gray-400 text-sm bg-white px-2">OR</Text>
-                </View>
-
-                {/* Auto Enroll */}
-                <TouchableOpacity
-                  onPress={handleAutoEnroll}
-                  style={[styles.actionButton, styles.autoEnrollActionButton]}
-                  disabled={addingStudent}
-                >
-                  {addingStudent ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <HStack space="sm" className="items-center">
-                      <GraduationCap size={20} color="#FFFFFF" />
-                      <VStack space="xs">
-                        <Text className="text-white font-semibold">Auto-Enroll by Section</Text>
-                        <Text className="text-white text-xs opacity-80">
-                          Enroll all students from {courseDetails?.course?.departmentId?.toUpperCase() || ""} Dept, Sem {courseDetails?.semester || ""}, Sec {courseDetails?.section || ""}
-                        </Text>
-                      </VStack>
                     </HStack>
                   )}
                 </TouchableOpacity>
@@ -830,13 +763,6 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     paddingHorizontal: 24,
   },
-  autoEnrollButton: {
-    backgroundColor: "#8B5CF6",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 24,
-  },
   studentCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
@@ -907,9 +833,6 @@ const styles = StyleSheet.create({
   },
   addActionButton: {
     backgroundColor: "#10B981",
-  },
-  autoEnrollActionButton: {
-    backgroundColor: "#8B5CF6",
   },
   cancelButton: {
     backgroundColor: "#F3F4F6",

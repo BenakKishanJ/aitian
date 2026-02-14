@@ -18,7 +18,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { autoEnrollStudentToCourses } from "@/lib/enrollmentUtils";
+
 import { DEPARTMENTS, SEMESTERS, SECTIONS } from "@/types/constants";
 
 /* Gluestack UI (local re-exports) */
@@ -133,32 +133,14 @@ export default function RegisterStudentScreen() {
         name: formData.name.trim(),
         email: formData.email,
         usn: formData.usn.toUpperCase(),
-        department: formData.department,
+        departmentId: formData.department,
         semester: parseInt(formData.semester),
-        section: formData.section,
+        section: formData.section.toUpperCase(),
         isActive: true,
         createdAt: serverTimestamp(),
       };
 
       await setDoc(doc(db, "users", userCredential.user.uid), userData);
-
-      // Auto-enroll student in courses
-      try {
-        const enrollmentResult = await autoEnrollStudentToCourses(
-          userCredential.user.uid,
-          formData.department as any,
-          parseInt(formData.semester),
-          formData.section
-        );
-
-        if (enrollmentResult.success) {
-          console.log(`Auto-enrolled in ${enrollmentResult.enrolledCount} courses`);
-        } else {
-          console.error('Auto-enrollment failed:', enrollmentResult.error);
-        }
-      } catch (enrollErr) {
-        console.error('Error during auto-enrollment:', enrollErr);
-      }
 
       Alert.alert(
         "Registration Successful!",
@@ -477,7 +459,7 @@ export default function RegisterStudentScreen() {
                           <SelectItem
                             key={sec}
                             label={`Section ${sec}`}
-                            value={sec.toLowerCase()}
+                            value={sec}
                           />
                         ))}
                       </SelectContent>

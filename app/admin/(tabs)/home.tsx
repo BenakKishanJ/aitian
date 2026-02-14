@@ -28,6 +28,7 @@ import {
   Plus,
   ChevronRight,
   ClipboardList,
+  Layers,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useAdminData } from "@/lib/hooks/useAdminData";
@@ -212,6 +213,12 @@ export default function AdminHomeScreen() {
               label="Manage Courses"
               color="#3B82F6"
               onPress={() => router.push("/admin/academics")}
+            />
+            <QuickAction
+              icon={Layers}
+              label="Manage Electives"
+              color="#EC4899"
+              onPress={() => router.push("/admin/electives")}
             />
             <QuickAction
               icon={ClipboardList}

@@ -1,6 +1,8 @@
 // Export all hooks from this directory
 export { useCourses } from './useCourses';
 export { useCoursesWithEnrollments } from './useCoursesWithEnrollments';
+export { useStudentCourses } from './useStudentCourses';
+export { useTeacherCourses } from './useTeacherCourses';
 export { useCourseDetails } from './useCourseDetails';
 export { useAssignments } from './useAssignments';
 export { useAssignmentSubmission } from './useAssignmentSubmission';

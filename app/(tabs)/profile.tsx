@@ -59,7 +59,8 @@ interface LinkedUser {
   name: string;
   email: string;
   usn?: string;
-  department?: string;
+  departmentId?: string;
+  department?: string; // legacy support
   semester?: number;
   section?: string;
 }
@@ -145,7 +146,7 @@ export default function ProfileScreen() {
             name: userData.name,
             email: userData.email,
             usn: userData.usn,
-            department: userData.department,
+            departmentId: userData.departmentId || userData.department,
             semester: userData.semester,
             section: userData.section,
           });
@@ -384,7 +385,11 @@ export default function ProfileScreen() {
                     {userData.usn && (
                       <VStack space="xs">
                         <HStack className="items-center" space="xs">
-                          <Icon as={Hash} size="xs" className="text-gray-400" />
+                          <Icon
+                            as={Hash}
+                            size="xs"
+                            className="text-gray-400"
+                          />
                           <Text className="text-xs text-gray-600">USN</Text>
                         </HStack>
                         <Text className="text-base text-black font-mono">
@@ -393,7 +398,7 @@ export default function ProfileScreen() {
                       </VStack>
                     )}
 
-                    {userData.department && (
+                    {(userData.departmentId || userData.department) && (
                       <VStack space="xs">
                         <HStack className="items-center" space="xs">
                           <Icon
@@ -406,7 +411,7 @@ export default function ProfileScreen() {
                           </Text>
                         </HStack>
                         <Text className="text-base text-black">
-                          {userData.department}
+                          {userData.departmentId || userData.department}
                         </Text>
                       </VStack>
                     )}
@@ -454,13 +459,35 @@ export default function ProfileScreen() {
                     {userData.teacherCode && (
                       <VStack space="xs">
                         <HStack className="items-center" space="xs">
-                          <Icon as={Hash} size="xs" className="text-gray-400" />
+                          <Icon
+                            as={Users}
+                            size="xs"
+                            className="text-gray-400"
+                          />
                           <Text className="text-xs text-gray-600">
                             Teacher Code
                           </Text>
                         </HStack>
                         <Text className="text-base text-black font-mono">
                           {userData.teacherCode}
+                        </Text>
+                      </VStack>
+                    )}
+
+                    {(userData.departmentId || userData.department) && (
+                      <VStack space="xs">
+                        <HStack className="items-center" space="xs">
+                          <Icon
+                            as={BookOpen}
+                            size="xs"
+                            className="text-gray-400"
+                          />
+                          <Text className="text-xs text-gray-600">
+                            Department
+                          </Text>
+                        </HStack>
+                        <Text className="text-base text-black">
+                          {userData.departmentId || userData.department}
                         </Text>
                       </VStack>
                     )}
@@ -530,9 +557,9 @@ export default function ProfileScreen() {
                             <Text className="text-xs text-gray-600">
                               USN: {linkedUser.usn}
                             </Text>
-                            {linkedUser.department && (
+                            {(linkedUser.departmentId || linkedUser.department) && (
                               <Text className="text-xs text-gray-600">
-                                {linkedUser.department}
+                                {linkedUser.departmentId || linkedUser.department}
                                 {linkedUser.semester &&
                                   ` • Sem ${linkedUser.semester}`}
                                 {linkedUser.section &&

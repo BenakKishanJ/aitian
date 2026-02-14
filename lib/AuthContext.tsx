@@ -9,6 +9,7 @@ interface AuthContextType {
   userData: UserData | null;
   role: Role | null;
   loading: boolean;
+  authInitialized: boolean;
   isAuthenticated: boolean;
   logout: () => Promise<void>;
 }
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userData,
         role,
         loading,
+        authInitialized,
         isAuthenticated: !!user && authInitialized,
         logout,
       }}

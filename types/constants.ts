@@ -21,6 +21,9 @@ export const COLLECTIONS = {
   PARENT_LINKS: 'parentLinks',
   COURSE_REQUESTS: 'courseRequests',
   ELECTIVE_GROUPS: 'electiveGroups',
+  ELECTIVE_SLOTS: 'electiveSlots',
+  ELECTIVE_SLOT_MAPPINGS: 'electiveSlotMappings',
+  ELECTIVE_SELECTIONS: 'electiveSelections',
   CONFIG: 'config',
 } as const;
 
@@ -201,6 +204,27 @@ export const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export const SECTIONS = ['A', 'B', 'C', 'D'] as const;
 
 export type Section = (typeof SECTIONS)[number];
+
+/**
+ * Course types
+ */
+export const COURSE_TYPES = {
+  CORE: 'core',
+  PROFESSIONAL_ELECTIVE: 'professional_elective',
+  OPEN_ELECTIVE: 'open_elective',
+} as const;
+
+export type CourseType = (typeof COURSE_TYPES)[keyof typeof COURSE_TYPES];
+
+/**
+ * Elective slot types
+ */
+export const ELECTIVE_SLOT_TYPES = {
+  OPEN: 'open',
+  PROFESSIONAL: 'professional',
+} as const;
+
+export type ElectiveSlotType = (typeof ELECTIVE_SLOT_TYPES)[keyof typeof ELECTIVE_SLOT_TYPES];
 
 /**
  * Enrollment types

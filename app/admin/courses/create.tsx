@@ -19,7 +19,7 @@ import { Select, SelectTrigger, SelectInput, SelectIcon, SelectPortal, SelectBac
 import { useAuth } from '@/lib/AuthContext';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { DEPARTMENTS, SEMESTERS, COLLECTIONS, DepartmentId } from '@/types/constants';
+import { DEPARTMENTS, SEMESTERS, COLLECTIONS, DepartmentId, COURSE_TYPES, CourseType } from '@/types/constants';
 import { validateCourseCode, validateCourseName, validateCredits } from '@/lib/validation';
 
 export default function CreateCourseScreen() {
@@ -33,7 +33,7 @@ export default function CreateCourseScreen() {
   const [departmentId, setDepartmentId] = useState<DepartmentId | ''>('');
   const [semester, setSemester] = useState<string>('');
   const [credits, setCredits] = useState<string>('');
-  const [isElective, setIsElective] = useState(false);
+  const [courseType, setCourseType] = useState<CourseType>('core');
   const [description, setDescription] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
@@ -106,7 +106,7 @@ export default function CreateCourseScreen() {
         departmentId,
         semester: parseInt(semester),
         credits: parseInt(credits),
-        isElective,
+        courseType,
         metadata: {
           description: description.trim() || undefined,
         },
@@ -130,7 +130,7 @@ export default function CreateCourseScreen() {
               setDepartmentId('');
               setSemester('');
               setCredits('');
-              setIsElective(false);
+              setCourseType('core');
               setDescription('');
             },
           },
@@ -279,27 +279,49 @@ export default function CreateCourseScreen() {
             </View>
           </VStack>
 
-          {/* Elective Toggle */}
-          <TouchableOpacity
-            style={styles.toggleContainer}
-            onPress={() => setIsElective(!isElective)}
-          >
-            <HStack space="md" style={styles.toggleContent}>
-              {isElective ? (
-                <ToggleRight size={28} color="#7477FF" />
-              ) : (
-                <ToggleLeft size={28} color="#C5D4CA" />
-              )}
-              <VStack space="xs">
-                <Text style={styles.toggleLabel}>Elective Course</Text>
-                <Text style={styles.toggleDescription}>
-                  {isElective 
-                    ? 'Students will choose this from elective options' 
-                    : 'This is a core/mandatory course'}
-                </Text>
-              </VStack>
-            </HStack>
-          </TouchableOpacity>
+          {/* Course Type Selector */}
+          <VStack space="xs">
+            <Text style={styles.label}>Course Type *</Text>
+            <Select
+              selectedValue={courseType}
+              onValueChange={(value) => setCourseType(value as CourseType)}
+            >
+              <SelectTrigger style={styles.selectTrigger}>
+                <HStack space="sm" style={styles.selectContent}>
+                  <ToggleRight size={20} color="#7477FF" />
+                  <SelectInput placeholder="Select course type" style={styles.selectInput} />
+                </HStack>
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectPortal>
+                <SelectBackdrop />
+                <SelectContent>
+                  <SelectDragIndicatorWrapper>
+                    <SelectDragIndicator />
+                  </SelectDragIndicatorWrapper>
+                  <SelectItem 
+                    label="Core (Mandatory)" 
+                    value={COURSE_TYPES.CORE}
+                  />
+                  <SelectItem 
+                    label="Professional Elective" 
+                    value={COURSE_TYPES.PROFESSIONAL_ELECTIVE}
+                  />
+                  <SelectItem 
+                    label="Open Elective" 
+                    value={COURSE_TYPES.OPEN_ELECTIVE}
+                  />
+                </SelectContent>
+              </SelectPortal>
+            </Select>
+            <Text style={styles.toggleDescription}>
+              {courseType === COURSE_TYPES.CORE 
+                ? 'Mandatory course for all students in this department/semester'
+                : courseType === COURSE_TYPES.PROFESSIONAL_ELECTIVE
+                ? 'Department-specific elective that students can choose from'
+                : 'Cross-department elective open to students from any department'}
+            </Text>
+          </VStack>
 
           {/* Description */}
           <VStack space="xs">

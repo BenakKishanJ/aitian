@@ -10,69 +10,103 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, Plus, X } from 'lucide-react-native';
+import { Search, Plus, X, Layers } from 'lucide-react-native';
 import { useAuth } from '@/lib/AuthContext';
+import { useStudentCourses } from '@/lib/hooks/useStudentCourses';
 import { useCoursesWithEnrollments } from '@/lib/hooks/useCoursesWithEnrollments';
 import { CourseCard } from '@/components/academics/CourseCard';
 import { SemesterGroup } from '@/components/academics/SemesterGroup';
 import { ElectiveSelectorModal } from '@/components/academics/ElectiveSelectorModal';
-import { CourseRequestModal } from '@/components/academics/CourseRequestModal';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Icon } from '@/components/ui/icon';
-import { CourseInstanceWithDetails, Enrollment, Course, ElectiveGroup } from '@/types';
-import { collection, query, where, getDocs, doc, getDoc, addDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { StudentCourseView, CourseInstanceWithDetails, ElectiveSlot, Course, EnrollmentStatus } from '@/types';
+import { collection, query, where, getDocs, getDoc, doc, addDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { COLLECTIONS, ENROLLMENT_STATUSES } from '@/types/constants';
+import { COLLECTIONS, ELECTIVE_SLOT_TYPES, ENROLLMENT_STATUSES } from '@/types/constants';
 
 interface GroupedCourses {
-  [semester: number]: {
-    courses: CourseInstanceWithDetails[];
-    enrollments: { [courseId: string]: Enrollment };
-  };
+  [semester: number]: StudentCourseView[];
 }
 
 export default function AcademicsScreen() {
   const { user, userData, role } = useAuth();
   const userSemester = userData?.role === 'student' ? userData.semester : null;
+  const userDept = userData?.role === 'student' ? userData.departmentId : null;
+  const userSection = userData?.role === 'student' ? userData.section : null;
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [isElectiveModalOpen, setIsElectiveModalOpen] = useState(false);
-  const [isCourseRequestModalOpen, setIsCourseRequestModalOpen] = useState(false);
-  const [selectedElectiveGroup, setSelectedElectiveGroup] = useState<ElectiveGroup | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<ElectiveSlot | null>(null);
   const [electiveCourses, setElectiveCourses] = useState<Course[]>([]);
-  const [selectedPendingEnrollment, setSelectedPendingEnrollment] = useState<Enrollment | null>(null);
+  const [selectedCourseView, setSelectedCourseView] = useState<StudentCourseView | null>(null);
   const [loadingElectives, setLoadingElectives] = useState(false);
   const [electiveError, setElectiveError] = useState<string | null>(null);
 
   const router = useRouter();
 
-  const { courses, enrollments, loading, error, refresh } = useCoursesWithEnrollments({
+  // Use new hook for students, old hook for others
+  const { 
+    courses: studentCourses, 
+    loading: studentLoading, 
+    error: studentError, 
+    refresh: refreshStudent 
+  } = useStudentCourses();
+
+  const { 
+    courses: teacherCourses, 
+    enrollments: teacherEnrollments,
+    loading: teacherLoading, 
+    error: teacherError, 
+    refresh: refreshTeacher 
+  } = useCoursesWithEnrollments({
     searchQuery: searchQuery,
   });
+
+  // Determine which data to use based on role
+  const isStudent = role === 'student';
+  const isTeacher = role === 'teacher';
+  
+  // For students, use the new hook with dynamic course fetching
+  // For teachers, use the existing hook
+  // For admin/parent, we need to handle separately or use a different approach
+  const courses = useMemo(() => {
+    if (isStudent) {
+      return studentCourses;
+    } else if (isTeacher) {
+      return teacherCourses.map(tc => ({
+        instance: tc,
+        isElectiveSlot: tc.course?.courseType?.includes('elective') || false,
+        selectionStatus: 'not_applicable' as const,
+      }));
+    } else {
+      // For admin and parent roles, return empty array for now
+      // These roles should use different data fetching logic
+      return [];
+    }
+  }, [isStudent, isTeacher, studentCourses, teacherCourses]);
+  
+  const enrollments = isStudent ? {} : teacherEnrollments;
+  const loading = isStudent ? studentLoading : teacherLoading;
+  const error = isStudent ? studentError : teacherError;
+  const refresh = isStudent ? refreshStudent : refreshTeacher;
 
   // Group courses by semester (high to low)
   const groupedCourses: GroupedCourses = useMemo(() => {
     const grouped: GroupedCourses = {};
     
-    courses.forEach((course: CourseInstanceWithDetails) => {
-      const semester = course.semester;
+    courses.forEach((courseView: StudentCourseView) => {
+      const semester = courseView.instance.semester;
       if (!grouped[semester]) {
-        grouped[semester] = { courses: [], enrollments: {} };
+        grouped[semester] = [];
       }
-      grouped[semester].courses.push(course);
-      
-      // Add enrollment info if exists
-      const enrollment = enrollments[course.id];
-      if (enrollment) {
-        grouped[semester].enrollments[course.id] = enrollment;
-      }
+      grouped[semester].push(courseView);
     });
 
     return grouped;
-  }, [courses, enrollments]);
+  }, [courses]);
 
   // Get sorted semester keys (descending)
   const semesterKeys = useMemo(() => {
@@ -89,42 +123,60 @@ export default function AcademicsScreen() {
 
   // Handle elective course selection
   const handleElectiveSelect = async (courseId: string) => {
-    if (!selectedPendingEnrollment || !user) return;
+    if (!selectedSlot || !user || !userDept || !userSection) return;
 
     try {
-      // Find the course instance for the selected course
+      // Find the course instance for this slot and student's section
       const instancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
       const instancesQuery = query(
         instancesRef,
-        where('courseId', '==', courseId),
+        where('electiveSlotId', '==', selectedSlot.id),
+        where('departmentId', '==', userDept),
+        where('semester', '==', selectedSlot.semester),
+        where('section', '==', userSection),
         where('isActive', '==', true)
       );
 
       const instancesSnap = await getDocs(instancesQuery);
       
+      let instanceId: string;
+      
       if (instancesSnap.empty) {
-        setElectiveError('No active course instance found for this elective. Please contact admin.');
-        return;
+        // No instance exists yet for this section - we need to find an instance and use it
+        const fallbackQuery = query(
+          instancesRef,
+          where('electiveSlotId', '==', selectedSlot.id),
+          where('departmentId', '==', userDept),
+          where('semester', '==', selectedSlot.semester),
+          where('isActive', '==', true)
+        );
+        const fallbackSnap = await getDocs(fallbackQuery);
+        
+        if (fallbackSnap.empty) {
+          setElectiveError('No course instance found for this elective. Please contact admin.');
+          return;
+        }
+        
+        instanceId = fallbackSnap.docs[0].id;
+      } else {
+        instanceId = instancesSnap.docs[0].id;
       }
-
-      // Use the first available course instance
-      const courseInstanceId = instancesSnap.docs[0].id;
-
-      // Update enrollment with selected elective
-      const enrollmentRef = doc(db, COLLECTIONS.ENROLLMENTS, selectedPendingEnrollment.id);
-      await updateDoc(enrollmentRef, {
-        courseInstanceId: courseInstanceId,
-        selectedElectiveCourseId: courseId,
-        enrollmentStatus: ENROLLMENT_STATUSES.ELECTIVE_ENROLLED,
-        updatedAt: Timestamp.now(),
+      
+      // Create elective selection
+      await addDoc(collection(db, COLLECTIONS.ELECTIVE_SELECTIONS), {
+        studentId: user.uid,
+        slotId: selectedSlot.id,
+        selectedCourseId: courseId,
+        instanceId: instanceId,
+        selectedAt: serverTimestamp(),
       });
 
       // Refresh courses
       await refresh();
       
       setIsElectiveModalOpen(false);
-      setSelectedPendingEnrollment(null);
-      setSelectedElectiveGroup(null);
+      setSelectedSlot(null);
+      setSelectedCourseView(null);
     } catch (err: any) {
       console.error('Error selecting elective:', err);
       setElectiveError(err.message || 'Failed to select elective');
@@ -132,38 +184,47 @@ export default function AcademicsScreen() {
   };
 
   // Open elective selector
-  const openElectiveSelector = async (courseInstance: CourseInstanceWithDetails, enrollment: Enrollment) => {
-    setSelectedPendingEnrollment(enrollment);
+  const openElectiveSelector = async (courseView: StudentCourseView) => {
+    if (!courseView.instance.electiveSlotId) return;
+    
+    setSelectedCourseView(courseView);
     setLoadingElectives(true);
     setElectiveError(null);
 
     try {
-      // Fetch elective group and available courses
-      // For now, we'll show all courses from the same department/semester that are electives
-      const coursesRef = collection(db, COLLECTIONS.COURSES);
-      const coursesQuery = query(
-        coursesRef,
-        where('departmentId', '==', courseInstance.departmentId),
-        where('semester', '==', courseInstance.semester),
-        where('isElective', '==', true)
-      );
+      // Fetch the slot details
+      const slotDoc = await getDoc(doc(db, COLLECTIONS.ELECTIVE_SLOTS, courseView.instance.electiveSlotId));
+      if (!slotDoc.exists()) {
+        setElectiveError('Elective slot not found');
+        return;
+      }
+      
+      const slotData = { id: slotDoc.id, ...slotDoc.data() } as ElectiveSlot;
+      setSelectedSlot(slotData);
 
-      const coursesSnap = await getDocs(coursesQuery);
-      const electiveCoursesList: Course[] = [];
+      // Fetch available courses from slot mapping
+      const mappingsRef = collection(db, COLLECTIONS.ELECTIVE_SLOT_MAPPINGS);
+      const mappingsQuery = query(mappingsRef, where('slotId', '==', slotData.id));
+      const mappingsSnap = await getDocs(mappingsQuery);
+      
+      if (mappingsSnap.empty) {
+        setElectiveError('No courses mapped to this slot yet. Please contact admin.');
+        return;
+      }
 
-      coursesSnap.docs.forEach((doc) => {
-        electiveCoursesList.push({ id: doc.id, ...doc.data() } as Course);
-      });
+      const mapping = mappingsSnap.docs[0].data();
+      const courseIds: string[] = mapping.availableCourseIds || [];
 
-      setElectiveCourses(electiveCoursesList);
-      setSelectedElectiveGroup({
-        id: 'default',
-        name: 'Select Your Elective',
-        departmentId: courseInstance.departmentId,
-        semester: courseInstance.semester,
-        courseIds: electiveCoursesList.map((c) => c.id),
-        createdAt: Timestamp.now(),
-      });
+      // Fetch course details
+      const coursesList: Course[] = [];
+      for (const courseId of courseIds) {
+        const courseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, courseId));
+        if (courseDoc.exists()) {
+          coursesList.push({ id: courseDoc.id, ...courseDoc.data() } as Course);
+        }
+      }
+
+      setElectiveCourses(coursesList);
       setIsElectiveModalOpen(true);
     } catch (err: any) {
       console.error('Error loading electives:', err);
@@ -173,59 +234,56 @@ export default function AcademicsScreen() {
     }
   };
 
-  // Handle course request submission
-  const handleCourseRequestSubmit = async (requests: any[]) => {
-    if (!user || !userData) return;
-
-    try {
-      const requestsRef = collection(db, COLLECTIONS.COURSE_REQUESTS);
-      const requestDocIds: string[] = [];
-
-      // Create each request and collect the document IDs
-      for (const request of requests) {
-        const docRef = await addDoc(requestsRef, {
-          ...request,
-          teacherId: user.uid,
-          teacherName: userData.name,
-          status: 'pending',
-          requestedAt: Timestamp.now(),
-        });
-        requestDocIds.push(docRef.id);
-      }
-
-      // Update teacher's pending course IDs with actual document IDs
-      const userRef = doc(db, COLLECTIONS.USERS, user.uid);
-      const currentPending = (userData as any).pendingCourseIds || [];
-      await updateDoc(userRef, {
-        pendingCourseIds: [...currentPending, ...requestDocIds],
-        updatedAt: Timestamp.now(),
-      });
-
-      setIsCourseRequestModalOpen(false);
-    } catch (err: any) {
-      console.error('Error submitting course request:', err);
-      throw err;
-    }
-  };
-
-  const handleCreateCourse = () => {
-    if (role === 'teacher') {
-      setIsCourseRequestModalOpen(true);
-    } else if (role === 'admin') {
-      // Navigate to create course page
-      console.log('Create course - admin');
-    }
-  };
-
-  const handleCardPress = (courseInstance: CourseInstanceWithDetails) => {
-    const enrollment = enrollments[courseInstance.id];
-    
-    if (role === 'student' && enrollment?.enrollmentStatus === ENROLLMENT_STATUSES.ELECTIVE_PENDING) {
-      openElectiveSelector(courseInstance, enrollment);
+  const handleCardPress = (courseView: StudentCourseView) => {
+    if (role === 'student' && courseView.isElectiveSlot && courseView.selectionStatus === 'not_selected') {
+      // This is an elective slot that hasn't been selected yet
+      openElectiveSelector(courseView);
     } else {
-      // Navigate to course detail page for all other cases
-      router.push(`/(tabs)/academics/${courseInstance.id}`);
+      // Navigate to course detail page
+      router.push(`/(tabs)/academics/${courseView.instance.id}` as any);
     }
+  };
+
+  // Filter courses based on search
+  const filteredGroupedCourses = useMemo(() => {
+    if (!searchQuery.trim()) return groupedCourses;
+    
+    const filtered: GroupedCourses = {};
+    const queryLower = searchQuery.toLowerCase();
+    
+    Object.entries(groupedCourses).forEach(([semester, courseViews]) => {
+      const filteredViews = courseViews.filter((cv: StudentCourseView) => {
+        const courseName = cv.instance.course?.name?.toLowerCase() || '';
+        const courseCode = cv.instance.course?.courseCode?.toLowerCase() || '';
+        const section = cv.instance.section?.toLowerCase() || '';
+        
+        return courseName.includes(queryLower) ||
+               courseCode.includes(queryLower) ||
+               section.includes(queryLower);
+      });
+      
+      if (filteredViews.length > 0) {
+        filtered[parseInt(semester)] = filteredViews;
+      }
+    });
+    
+    return filtered;
+  }, [groupedCourses, searchQuery]);
+
+  // Get enrollment status for a course
+  const getEnrollmentStatus = (courseView: StudentCourseView): EnrollmentStatus | undefined => {
+    if (!isStudent) return undefined;
+    
+    if (courseView.isElectiveSlot) {
+      if (courseView.selectionStatus === 'not_selected') {
+        return ENROLLMENT_STATUSES.ELECTIVE_PENDING;
+      } else if (courseView.selectionStatus === 'selected') {
+        return ENROLLMENT_STATUSES.ELECTIVE_ENROLLED;
+      }
+    }
+    
+    // For core courses or when using old system
+    return enrollments[courseView.instance.id]?.enrollmentStatus;
   };
 
   return (
@@ -236,7 +294,7 @@ export default function AcademicsScreen() {
           <VStack space="xs">
             <Text className="text-2xl font-bold text-black">Academics</Text>
             <Text className="text-sm text-gray-600">
-              {role === 'student' && 'Your enrolled courses'}
+              {role === 'student' && 'Your courses'}
               {role === 'teacher' && 'Courses you teach'}
               {role === 'parent' && "Your child's courses"}
               {role === 'admin' && 'All courses'}
@@ -248,27 +306,26 @@ export default function AcademicsScreen() {
             onPress={() => setShowSearch(!showSearch)}
             style={styles.iconButton}
           >
-            <Icon
-              as={showSearch ? X : Search}
-              size="lg"
-              className="text-black"
-            />
+            <Icon as={showSearch ? X : Search} size="md" className="text-gray-700" />
           </TouchableOpacity>
         </HStack>
 
-        {/* Search Bar */}
+        {/* Search Input */}
         {showSearch && (
           <View style={styles.searchContainer}>
-            <Icon as={Search} size="md" className="text-gray-400" />
+            <Icon as={Search} size="sm" className="text-gray-400 ml-3" />
             <TextInput
               style={styles.searchInput}
               placeholder="Search courses..."
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
+              autoFocus
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={styles.clearButton}
+              >
                 <Icon as={X} size="sm" className="text-gray-400" />
               </TouchableOpacity>
             )}
@@ -276,112 +333,104 @@ export default function AcademicsScreen() {
         )}
       </View>
 
-      {/* Course List with Accordion */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} />
-        }
-      >
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text className="text-red-600 text-center">{error}</Text>
-          </View>
-        )}
-
-        {!loading && semesterKeys.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Text className="text-gray-500 text-center text-lg">
-              {searchQuery ? 'No courses found' : 'No courses available'}
-            </Text>
-            <Text className="text-gray-400 text-center text-sm mt-2">
-              {role === 'student' && "You haven't enrolled in any courses yet"}
-              {role === 'teacher' && 'No courses assigned to you'}
-              {role === 'parent' && 'No courses found for your child'}
-              {role === 'admin' && 'Create your first course to get started'}
-            </Text>
-          </View>
-        )}
-
-        {/* Semester Groups */}
-        {semesterKeys.map((semester) => {
-          const semesterData = groupedCourses[semester];
-          const isLocked = isSemesterLocked(semester);
-
-          return (
-            <SemesterGroup
-              key={semester}
-              semester={semester}
-              courseCount={semesterData.courses.length}
-              defaultExpanded={!isLocked && semester === userSemester}
-              isLocked={isLocked}
-            >
-              <VStack space="md">
-                {semesterData.courses.map((courseInstance) => {
-                  const enrollment = semesterData.enrollments[courseInstance.id];
-                  
-                  return (
-                    <CourseCard
-                      key={courseInstance.id}
-                      courseInstance={courseInstance}
-                      role={role!}
-                      enrollmentStatus={enrollment?.enrollmentStatus}
-                      isLocked={isLocked}
-                      onPress={() => handleCardPress(courseInstance)}
-                    />
-                  );
-                })}
-              </VStack>
-            </SemesterGroup>
-          );
-        })}
-
-        {/* Spacing at bottom */}
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* FAB for Teachers and Admins */}
-      {(role === 'teacher' || role === 'admin') && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleCreateCourse}
-          activeOpacity={0.8}
+      {/* Content */}
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#7477FF" />
+          <Text className="mt-4 text-gray-600">Loading courses...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text className="text-red-500">{error}</Text>
+          <TouchableOpacity onPress={refresh} style={styles.retryButton}>
+            <Text className="text-blue-500">Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={refresh} />
+          }
         >
-          <Icon as={Plus} size="xl" className="text-white" />
-        </TouchableOpacity>
+          {Object.keys(filteredGroupedCourses).length === 0 ? (
+            <View style={styles.emptyState}>
+              <Layers size={48} color="#C5D4CA" />
+              <Text className="text-lg font-semibold text-gray-700 mt-4">
+                {searchQuery ? 'No courses found' : 'No courses yet'}
+              </Text>
+              <Text className="text-sm text-gray-500 text-center mt-2 px-8">
+                {searchQuery 
+                  ? 'Try a different search term'
+                  : role === 'student' 
+                    ? 'Your courses will appear here once admin creates them'
+                    : role === 'teacher'
+                    ? 'Your assigned courses will appear here'
+                    : role === 'parent'
+                    ? "Your child's courses will appear here"
+                    : role === 'admin'
+                    ? 'Create courses to get started'
+                    : 'No courses available'
+                }
+              </Text>
+            </View>
+          ) : (
+            <VStack space="lg" className="px-4 py-4">
+              {semesterKeys.map((semester) => {
+                const semesterCourses = filteredGroupedCourses[semester];
+                const locked = isSemesterLocked(semester);
+                
+                return (
+                  <SemesterGroup
+                    key={semester}
+                    semester={semester}
+                    courseCount={semesterCourses.length}
+                    isLocked={locked}
+                    defaultExpanded={!locked}
+                  >
+                    <VStack space="sm">
+                      {semesterCourses.map((courseView: StudentCourseView) => (
+                        <CourseCard
+                          key={courseView.instance.id}
+                          courseInstance={courseView.instance}
+                          role={role || 'student'}
+                          enrollmentStatus={getEnrollmentStatus(courseView)}
+                          isLocked={locked}
+                          onPress={() => handleCardPress(courseView)}
+                        />
+                      ))}
+                    </VStack>
+                  </SemesterGroup>
+                );
+              })}
+            </VStack>
+          )}
+        </ScrollView>
       )}
 
       {/* Elective Selector Modal */}
-      <ElectiveSelectorModal
-        isOpen={isElectiveModalOpen}
-        onClose={() => {
-          setIsElectiveModalOpen(false);
-          setSelectedPendingEnrollment(null);
-          setSelectedElectiveGroup(null);
-        }}
-        onSelect={handleElectiveSelect}
-        electiveGroup={selectedElectiveGroup}
-        courses={electiveCourses}
-        loading={loadingElectives}
-        error={electiveError}
-      />
-
-      {/* Course Request Modal */}
-      {role === 'teacher' && (
-        <CourseRequestModal
-          isOpen={isCourseRequestModalOpen}
-          onClose={() => setIsCourseRequestModalOpen(false)}
-          onSubmit={handleCourseRequestSubmit}
+      {role === 'student' && (
+        <ElectiveSelectorModal
+          isOpen={isElectiveModalOpen}
+          onClose={() => {
+            setIsElectiveModalOpen(false);
+            setSelectedSlot(null);
+            setElectiveError(null);
+          }}
+          onSelect={handleElectiveSelect}
+          electiveGroup={selectedSlot ? {
+            id: selectedSlot.id,
+            name: selectedSlot.name,
+            departmentId: selectedSlot.departmentId,
+            semester: selectedSlot.semester,
+            courseIds: electiveCourses.map(c => c.id),
+            createdAt: Timestamp.now(),
+          } : null}
+          courses={electiveCourses}
+          loading={loadingElectives}
+          error={electiveError}
         />
-      )}
-
-      {/* Initial Loading */}
-      {loading && semesterKeys.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#7477FF" />
-          <Text className="text-gray-600 mt-4">Loading courses...</Text>
-        </View>
       )}
     </SafeAreaView>
   );
@@ -399,72 +448,43 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#F4F7F5',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F3F4F6',
     marginHorizontal: 16,
     marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E9F0EB',
+    borderRadius: 8,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     fontSize: 16,
-    color: '#232323',
-    fontFamily: 'System',
+  },
+  clearButton: {
+    padding: 8,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingBottom: 100,
   },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#FEF0EE',
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  emptyContainer: {
-    padding: 48,
+  centered: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  retryButton: {
+    marginTop: 12,
+    padding: 8,
   },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#7477FF',
+  emptyState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#232323',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    paddingVertical: 60,
   },
 });

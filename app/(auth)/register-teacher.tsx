@@ -132,7 +132,7 @@ export default function RegisterTeacherScreen() {
         name: formData.name.trim(),
         email: formData.email,
         teacherCode: formData.teacherCode.toUpperCase(),
-        department: formData.department,
+        departmentId: formData.department,
         phone: formData.phone || null,
         qualification: formData.qualification || null,
         approvedCourseIds: [],
