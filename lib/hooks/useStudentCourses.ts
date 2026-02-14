@@ -18,6 +18,7 @@ import type {
   ElectiveSlot,
   ElectiveSlotMapping,
   ElectiveSelection,
+  ElectiveSlotAssignment,
   StudentCourseView,
 } from '@/types';
 import { COLLECTIONS, DepartmentId, ELECTIVE_SLOT_TYPES } from '@/types/constants';
@@ -52,7 +53,6 @@ export function useStudentCourses(): UseStudentCoursesResult {
 
     // Get student profile data with runtime validation
     const studentData = userData as any;
-    // Support both departmentId (new) and department (legacy) for backward compatibility
     const studentDept = studentData.departmentId || studentData.department;
     const studentSem = studentData.semester;
     const studentSection = studentData.section;
@@ -91,19 +91,14 @@ export function useStudentCourses(): UseStudentCoursesResult {
 
       const studentCourseViews: StudentCourseView[] = [];
 
-      // Normalize section for case-insensitive matching
+      // Normalize values
       const normalizedSection = studentSection.toUpperCase();
-      const altSection = studentSection.toLowerCase();
-      
-      // Normalize department (handle both departmentId formats)
       const normalizedDept = studentDept.toLowerCase();
 
       // ============================================
-      // 1. FETCH CORE COURSES
+      // 1. FETCH CORE COURSES (Regular mandatory courses)
       // ============================================
       const coreInstancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
-      
-      // Try uppercase section first
       const coreQuery = query(
         coreInstancesRef,
         where('departmentId', '==', normalizedDept),
@@ -113,117 +108,45 @@ export function useStudentCourses(): UseStudentCoursesResult {
       );
 
       const coreSnap = await getDocs(coreQuery);
-      const coreInstanceIds: string[] = [];
       const coreInstances: CourseInstanceWithDetails[] = [];
 
       coreSnap.docs.forEach((docSnap) => {
         const instance = { id: docSnap.id, ...docSnap.data() } as CourseInstanceWithDetails;
         coreInstances.push(instance);
-        coreInstanceIds.push(docSnap.id);
       });
 
-      // If no results with uppercase, try lowercase (backward compatibility)
-      if (coreInstances.length === 0 && normalizedSection !== altSection) {
-        const altCoreQuery = query(
-          coreInstancesRef,
-          where('departmentId', '==', normalizedDept),
-          where('semester', '==', studentSem),
-          where('section', '==', altSection),
-          where('isActive', '==', true)
-        );
-
-        const altCoreSnap = await getDocs(altCoreQuery);
-        altCoreSnap.docs.forEach((docSnap) => {
-          const instance = { id: docSnap.id, ...docSnap.data() } as CourseInstanceWithDetails;
-          coreInstances.push(instance);
-          coreInstanceIds.push(docSnap.id);
-        });
-      }
-
       // ============================================
-      // 2. FETCH PROFESSIONAL ELECTIVE SLOTS
+      // 2. FETCH ELECTIVE SLOTS ASSIGNED TO THIS STUDENT
       // ============================================
-      const profSlotsRef = collection(db, COLLECTIONS.ELECTIVE_SLOTS);
-      const profSlotsQuery = query(
-        profSlotsRef,
-        where('slotType', '==', ELECTIVE_SLOT_TYPES.PROFESSIONAL),
+      // Find assignments for this department/semester/section
+      const assignmentsRef = collection(db, COLLECTIONS.ELECTIVE_SLOT_ASSIGNMENTS);
+      const assignmentsQuery = query(
+        assignmentsRef,
         where('departmentId', '==', normalizedDept),
         where('semester', '==', studentSem),
+        where('sections', 'array-contains', normalizedSection),
         where('isActive', '==', true)
       );
 
-      const profSlotsSnap = await getDocs(profSlotsQuery);
-      const profSlotIds: string[] = [];
-      const profSlots: ElectiveSlot[] = [];
+      const assignmentsSnap = await getDocs(assignmentsQuery);
+      const assignedSlotIds: string[] = [];
 
-      profSlotsSnap.docs.forEach((docSnap) => {
-        const slot = { id: docSnap.id, ...docSnap.data() } as ElectiveSlot;
-        profSlots.push(slot);
-        profSlotIds.push(docSnap.id);
+      assignmentsSnap.docs.forEach((docSnap) => {
+        const assignment = docSnap.data() as ElectiveSlotAssignment;
+        assignedSlotIds.push(assignment.slotId);
       });
 
-      // ============================================
-      // 3. FETCH OPEN ELECTIVE SLOTS
-      // ============================================
-      const openSlotsRef = collection(db, COLLECTIONS.ELECTIVE_SLOTS);
-      const openSlotsQuery = query(
-        openSlotsRef,
-        where('slotType', '==', ELECTIVE_SLOT_TYPES.OPEN),
-        where('assignedDepartments', 'array-contains', normalizedDept),
-        where('semester', '==', studentSem),
-        where('isActive', '==', true)
-      );
-
-      const openSlotsSnap = await getDocs(openSlotsQuery);
-      const openSlotIds: string[] = [];
-      const openSlots: ElectiveSlot[] = [];
-
-      openSlotsSnap.docs.forEach((docSnap) => {
-        const slot = { id: docSnap.id, ...docSnap.data() } as ElectiveSlot;
-        openSlots.push(slot);
-        openSlotIds.push(docSnap.id);
-      });
-
-      // Combine all slots
-      const allSlots = [...profSlots, ...openSlots];
-      const allSlotIds = [...profSlotIds, ...openSlotIds];
-
-      // ============================================
-      // 4. FETCH ELECTIVE INSTANCES FOR SLOTS
-      // ============================================
-      const electiveInstanceIds: string[] = [];
-      const slotInstancesMap: { [slotId: string]: CourseInstanceWithDetails[] } = {};
-
-      if (allSlotIds.length > 0) {
-        // For each slot, fetch instances
-        for (const slotId of allSlotIds) {
-          const slot = allSlots.find(s => s.id === slotId);
-          if (!slot) continue;
-
-          const instancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
-          const instancesQuery = query(
-            instancesRef,
-            where('electiveSlotId', '==', slotId),
-where('departmentId', '==', normalizedDept),
-            where('semester', '==', studentSem),
-            where('isActive', '==', true)
-          );
-
-          const instancesSnap = await getDocs(instancesQuery);
-          const slotInstanceList: CourseInstanceWithDetails[] = [];
-
-          instancesSnap.docs.forEach((docSnap) => {
-            const instance = { id: docSnap.id, ...docSnap.data() } as CourseInstanceWithDetails;
-            slotInstanceList.push(instance);
-            electiveInstanceIds.push(docSnap.id);
-          });
-
-          slotInstancesMap[slotId] = slotInstanceList;
+      // Fetch the actual slot details
+      const slots: ElectiveSlot[] = [];
+      for (const slotId of assignedSlotIds) {
+        const slotDoc = await getDoc(doc(db, COLLECTIONS.ELECTIVE_SLOTS, slotId));
+        if (slotDoc.exists()) {
+          slots.push({ id: slotDoc.id, ...slotDoc.data() } as ElectiveSlot);
         }
       }
 
       // ============================================
-      // 5. FETCH STUDENT'S ELECTIVE SELECTIONS
+      // 3. FETCH STUDENT'S ELECTIVE SELECTIONS
       // ============================================
       const selectionsRef = collection(db, COLLECTIONS.ELECTIVE_SELECTIONS);
       const selectionsQuery = query(
@@ -240,38 +163,49 @@ where('departmentId', '==', normalizedDept),
       });
 
       // ============================================
-      // 6. FETCH COURSE DETAILS FOR ALL INSTANCES
+      // 4. FETCH SLOT MAPPINGS (Available courses for each slot)
       // ============================================
-      const allInstanceIds = [...coreInstanceIds, ...electiveInstanceIds];
-      const courseData: { [id: string]: Course } = {};
+      const slotMappingsMap: { [slotId: string]: string[] } = {}; // slotId -> courseIds
 
-      if (allInstanceIds.length > 0) {
-        // Get unique courseIds
-        const allInstances = [...coreInstances, ...Object.values(slotInstancesMap).flat()];
-        const courseIds = [...new Set(allInstances.map(inst => inst.courseId).filter(Boolean))];
-
-        // Fetch courses in batches
-        if (courseIds.length > 0) {
-          const courseBatches: Promise<QuerySnapshot<DocumentData>>[] = [];
-          for (let i = 0; i < courseIds.length; i += 10) {
-            const batchIds = courseIds.slice(i, i + 10);
-            const coursesRef = collection(db, COLLECTIONS.COURSES);
-            const coursesQuery = query(coursesRef, where('__name__', 'in', batchIds));
-            courseBatches.push(getDocs(coursesQuery));
-          }
-          
-          const courseResults = await Promise.all(courseBatches);
-          courseResults.flatMap(snap => snap.docs).forEach(docSnap => {
-            courseData[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as Course;
-          });
+      for (const slot of slots) {
+        const mappingsRef = collection(db, COLLECTIONS.ELECTIVE_SLOT_MAPPINGS);
+        const mappingsQuery = query(
+          mappingsRef,
+          where('slotId', '==', slot.id)
+        );
+        const mappingsSnap = await getDocs(mappingsQuery);
+        
+        if (!mappingsSnap.empty) {
+          const mapping = mappingsSnap.docs[0].data() as ElectiveSlotMapping;
+          slotMappingsMap[slot.id] = mapping.availableCourseIds || [];
         }
       }
 
       // ============================================
-      // 7. FETCH TEACHER NAMES
+      // 5. FETCH COURSE DETAILS FOR CORE COURSES
       // ============================================
-      const allInstances = [...coreInstances, ...Object.values(slotInstancesMap).flat()];
-      const teacherIds = [...new Set(allInstances.flatMap(inst => inst.teacherIds || []))];
+      const coreCourseIds = [...new Set(coreInstances.map(inst => inst.courseId).filter(Boolean))];
+      const courseData: { [id: string]: Course } = {};
+
+      if (coreCourseIds.length > 0) {
+        const courseBatches: Promise<QuerySnapshot<DocumentData>>[] = [];
+        for (let i = 0; i < coreCourseIds.length; i += 10) {
+          const batchIds = coreCourseIds.slice(i, i + 10);
+          const coursesRef = collection(db, COLLECTIONS.COURSES);
+          const coursesQuery = query(coursesRef, where('__name__', 'in', batchIds));
+          courseBatches.push(getDocs(coursesQuery));
+        }
+        
+        const courseResults = await Promise.all(courseBatches);
+        courseResults.flatMap(snap => snap.docs).forEach(docSnap => {
+          courseData[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as Course;
+        });
+      }
+
+      // ============================================
+      // 6. FETCH TEACHER NAMES FOR CORE COURSES
+      // ============================================
+      const teacherIds = [...new Set(coreInstances.flatMap(inst => inst.teacherIds || []))];
       const teacherData: { [id: string]: string } = {};
 
       if (teacherIds.length > 0) {
@@ -290,7 +224,7 @@ where('departmentId', '==', normalizedDept),
       }
 
       // ============================================
-      // 8. BUILD CORE COURSE VIEWS
+      // 7. BUILD CORE COURSE VIEWS
       // ============================================
       coreInstances.forEach(instance => {
         if (instance.courseId && courseData[instance.courseId]) {
@@ -308,24 +242,66 @@ where('departmentId', '==', normalizedDept),
       });
 
       // ============================================
-      // 9. BUILD ELECTIVE SLOT VIEWS
+      // 8. BUILD ELECTIVE SLOT VIEWS
       // ============================================
-      allSlots.forEach(slot => {
-        const instances = slotInstancesMap[slot.id] || [];
+      for (const slot of slots) {
         const selection = selectionsMap[slot.id];
+        const availableCourseIds = slotMappingsMap[slot.id] || [];
 
-        if (selection && instances.length > 0) {
-          // Student has made a selection - find the selected instance
-          const selectedInstance = instances.find(inst => inst.id === selection.instanceId);
+        if (selection) {
+          // Student has selected a course for this slot
+          // Fetch the selected course details
+          const selectedCourseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, selection.selectedCourseId));
           
-          if (selectedInstance) {
-            // Enhance instance with course details
-            if (selectedInstance.courseId && courseData[selectedInstance.courseId]) {
-              selectedInstance.course = courseData[selectedInstance.courseId];
+          if (selectedCourseDoc.exists()) {
+            const selectedCourse = { id: selectedCourseDoc.id, ...selectedCourseDoc.data() } as Course;
+            
+            // Find course instances for this elective course in this slot
+            // Teachers are assigned to course instances
+            const instanceRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
+            const instanceQuery = query(
+              instanceRef,
+              where('courseId', '==', selectedCourse.id),
+              where('electiveSlotId', '==', slot.id),
+              where('isActive', '==', true)
+            );
+            
+            const instanceSnap = await getDocs(instanceQuery);
+            let teacherIds: string[] = [];
+            
+            if (!instanceSnap.empty) {
+              // Get teachers from the first available instance
+              // (All instances of same elective in same slot should have same teachers)
+              teacherIds = instanceSnap.docs[0].data().teacherIds || [];
             }
-            if (selectedInstance.teacherIds && selectedInstance.teacherIds.length > 0) {
-              selectedInstance.teacherNames = selectedInstance.teacherIds.map(id => teacherData[id] || 'Unknown');
+            
+            // Fetch teacher names
+            let teacherNames: string[] = [];
+            if (teacherIds.length > 0) {
+              const teacherDocs = await Promise.all(
+                teacherIds.map(teacherId => 
+                  getDoc(doc(db, COLLECTIONS.USERS, teacherId))
+                )
+              );
+              teacherNames = teacherDocs
+                .filter(doc => doc.exists())
+                .map(doc => doc.data().name || 'Unknown');
             }
+            
+            // Create a virtual instance for the selected course
+            const selectedInstance: CourseInstanceWithDetails = {
+              id: `selection-${selection.id}`,
+              courseId: selectedCourse.id,
+              departmentId: normalizedDept as DepartmentId,
+              semester: studentSem,
+              section: normalizedSection,
+              teacherIds: teacherIds,
+              isActive: true,
+              electiveSlotId: slot.id,
+              createdAt: slot.createdAt,
+              course: selectedCourse,
+              teacherNames: teacherNames.length > 0 ? teacherNames : ['TBA'],
+            };
 
             studentCourseViews.push({
               instance: selectedInstance,
@@ -336,7 +312,6 @@ where('departmentId', '==', normalizedDept),
           }
         } else {
           // No selection made - show placeholder slot
-          // Create a placeholder instance for the slot
           const placeholderInstance: CourseInstanceWithDetails = {
             id: `slot-${slot.id}`,
             courseId: '',
@@ -353,7 +328,7 @@ where('departmentId', '==', normalizedDept),
               name: slot.name,
               departmentId: normalizedDept as DepartmentId,
               semester: studentSem,
-              credits: 0, // Will be set when course is selected
+              credits: 0,
               courseType: slot.slotType === ELECTIVE_SLOT_TYPES.OPEN ? 'open_elective' : 'professional_elective',
               createdBy: '',
               createdAt: slot.createdAt,
@@ -364,9 +339,10 @@ where('departmentId', '==', normalizedDept),
             instance: placeholderInstance,
             isElectiveSlot: true,
             selectionStatus: 'not_selected',
+            availableCourseIds, // Store available courses for selection modal
           });
         }
-      });
+      }
 
       // Sort courses by course code
       studentCourseViews.sort((a, b) => {

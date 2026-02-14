@@ -40,18 +40,24 @@ export function ElectiveSelectorModal({
   const [submitting, setSubmitting] = useState(false);
 
   const handleSelect = async () => {
-    if (!selectedCourseId) return;
+    if (!selectedCourseId) {
+      console.log('No course selected');
+      return;
+    }
     
+    console.log('handleSelect in modal - courseId:', selectedCourseId);
     setSubmitting(true);
     try {
+      console.log('Calling onSelect...');
       await onSelect(selectedCourseId);
-      setSelectedCourseId(null);
-      onClose();
+      console.log('onSelect completed successfully');
+      // Don't clear here - let the parent handle cleanup after successful save
     } catch (err) {
       console.error('Failed to select elective:', err);
-    } finally {
+      // Keep modal open on error so user can see error message
       setSubmitting(false);
     }
+    // Note: We don't call onClose() here - parent component will close modal after successful save
   };
 
   const handleClose = () => {

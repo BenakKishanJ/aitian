@@ -19,7 +19,7 @@ import { Select, SelectTrigger, SelectInput, SelectIcon, SelectPortal, SelectBac
 import { useAuth } from '@/lib/AuthContext';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { DEPARTMENTS, SEMESTERS, COLLECTIONS, DepartmentId, ELECTIVE_SLOT_TYPES, ElectiveSlotType } from '@/types/constants';
+import { DEPARTMENTS, SEMESTERS, SECTIONS, COLLECTIONS, DepartmentId, ELECTIVE_SLOT_TYPES, ElectiveSlotType } from '@/types/constants';
 
 export default function CreateElectiveSlotScreen() {
   const router = useRouter();
@@ -34,6 +34,7 @@ export default function CreateElectiveSlotScreen() {
   const [semester, setSemester] = useState<string>('');
   const [description, setDescription] = useState('');
   const [assignedDepartments, setAssignedDepartments] = useState<DepartmentId[]>([]);
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
 
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
 
@@ -88,6 +89,7 @@ export default function CreateElectiveSlotScreen() {
     setFieldErrors({});
     
     try {
+      // 1. Create the elective slot
       const slotData = {
         slotCode: slotCode.trim().toUpperCase(),
         name: name.trim(),
@@ -102,6 +104,26 @@ export default function CreateElectiveSlotScreen() {
       };
 
       const docRef = await addDoc(collection(db, COLLECTIONS.ELECTIVE_SLOTS), slotData);
+
+      // 2. Create slot assignments for each department-section combination
+      const assignmentsRef = collection(db, COLLECTIONS.ELECTIVE_SLOT_ASSIGNMENTS);
+      const targetDepartments = slotType === ELECTIVE_SLOT_TYPES.OPEN 
+        ? [departmentId, ...assignedDepartments]
+        : [departmentId];
+
+      for (const dept of targetDepartments) {
+        const assignmentData = {
+          slotId: docRef.id,
+          departmentId: dept,
+          semester: parseInt(semester),
+          sections: selectedSections.length > 0 ? selectedSections : ['A', 'B', 'C', 'D'], // Default to all sections if none selected
+          academicYear: new Date().getFullYear().toString(),
+          isActive: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        await addDoc(assignmentsRef, assignmentData);
+      }
 
       Alert.alert(
         'Success',
@@ -131,6 +153,14 @@ export default function CreateElectiveSlotScreen() {
       prev.includes(deptId)
         ? prev.filter(id => id !== deptId)
         : [...prev, deptId]
+    );
+  };
+
+  const toggleSection = (section: string) => {
+    setSelectedSections(prev => 
+      prev.includes(section)
+        ? prev.filter(s => s !== section)
+        : [...prev, section]
     );
   };
 
@@ -304,6 +334,32 @@ export default function CreateElectiveSlotScreen() {
                 </SelectContent>
               </SelectPortal>
             </Select>
+          </VStack>
+
+          {/* Sections */}
+          <VStack space="xs">
+            <Text style={styles.label}>Sections *</Text>
+            <Text style={styles.sublabel}>Select which sections this elective slot applies to</Text>
+            
+            <View style={styles.sectionsContainer}>
+              {SECTIONS.map((section) => (
+                <TouchableOpacity
+                  key={section}
+                  style={[
+                    styles.sectionChip,
+                    selectedSections.includes(section) && styles.sectionChipSelected
+                  ]}
+                  onPress={() => toggleSection(section)}
+                >
+                  <Text style={[
+                    styles.sectionChipText,
+                    selectedSections.includes(section) && styles.sectionChipTextSelected
+                  ]}>
+                    {section}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </VStack>
 
           {/* Additional Departments (for Open Electives) */}
@@ -529,6 +585,34 @@ const styles = StyleSheet.create({
   deptTextSelected: {
     color: '#7477FF',
     fontWeight: '600',
+  },
+  sectionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sectionChip: {
+    minWidth: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9F0EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionChipSelected: {
+    backgroundColor: '#7477FF',
+    borderColor: '#7477FF',
+  },
+  sectionChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#232323',
+  },
+  sectionChipTextSelected: {
+    color: '#FFFFFF',
   },
   textAreaContainer: {
     alignItems: 'flex-start',

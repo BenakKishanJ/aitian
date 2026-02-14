@@ -23,6 +23,7 @@ export const COLLECTIONS = {
   ELECTIVE_GROUPS: 'electiveGroups',
   ELECTIVE_SLOTS: 'electiveSlots',
   ELECTIVE_SLOT_MAPPINGS: 'electiveSlotMappings',
+  ELECTIVE_SLOT_ASSIGNMENTS: 'electiveSlotAssignments',
   ELECTIVE_SELECTIONS: 'electiveSelections',
   CONFIG: 'config',
 } as const;

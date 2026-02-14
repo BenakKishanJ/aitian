@@ -127,8 +127,23 @@ export interface ElectiveSelection {
   studentId: string;
   slotId: string;
   selectedCourseId: string;
-  instanceId: string;           // The specific section instance
   selectedAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * Elective Slot Assignment - tracks which department/section/semester combos a slot is assigned to
+ * This determines which students see the elective slot
+ */
+export interface ElectiveSlotAssignment {
+  id: string;
+  slotId: string;
+  departmentId: DepartmentId;
+  semester: number;
+  sections: string[];  // e.g., ['A', 'B', 'C', 'D']
+  academicYear: string;
+  isActive: boolean;
+  createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
 
@@ -229,6 +244,7 @@ export interface StudentCourseView {
   electiveSelection?: ElectiveSelection;
   isElectiveSlot: boolean;
   selectionStatus: 'not_selected' | 'selected' | 'not_applicable';
+  availableCourseIds?: string[]; // For elective slots, the courses students can choose from
 }
 
 /**

@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, View, StyleSheet } from 'react-native';
+import { TouchableOpacity, View, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BookOpen, Users, TrendingUp, Lock, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
@@ -35,12 +35,28 @@ export function CourseCard({
     if (onPress) {
       onPress();
     } else {
-      // Navigate to course detail page using relative path
-      // This works regardless of which tab the user is in
-      router.push({
-        pathname: '/academics/[courseInstanceId]',
-        params: { courseInstanceId: courseInstance.id }
-      } as any);
+      // Check if this is a virtual instance (elective slot or selection)
+      const isVirtualInstance = courseInstance.id.startsWith('slot-') || 
+                                courseInstance.id.startsWith('selection-');
+      
+      if (isVirtualInstance) {
+        // For virtual instances (elective slots not yet selected), 
+        // the onPress handler should manage the selection flow
+        // If no onPress provided, show alert
+        if (!onPress) {
+          Alert.alert(
+            'Elective Selection',
+            'Please select an elective course from the available options.',
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        // Navigate to course detail page for real instances
+        router.push({
+          pathname: '/academics/[courseInstanceId]',
+          params: { courseInstanceId: courseInstance.id }
+        } as any);
+      }
     }
   };
 
@@ -60,7 +76,9 @@ export function CourseCard({
 
   const isElectivePending = enrollmentStatus === 'elective-pending';
   const isElectiveEnrolled = enrollmentStatus === 'elective-enrolled';
-  const showElectiveBadge = course?.isElective && role === 'student';
+  // Check courseType for electives (isElective is deprecated)
+  const isElectiveCourse = course?.courseType?.includes('elective') || course?.isElective;
+  const showElectiveBadge = isElectiveCourse && role === 'student';
 
   const getCardBorderStyle = () => {
     if (isLocked) {

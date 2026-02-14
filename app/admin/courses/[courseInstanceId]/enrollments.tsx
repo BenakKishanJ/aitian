@@ -81,34 +81,38 @@ export default function AdminEnrolledStudentsScreen() {
       
       if (isElective) {
         // For elective courses, fetch from ELECTIVE_SELECTIONS
-        const selectionsQuery = query(
-          collection(db, COLLECTIONS.ELECTIVE_SELECTIONS),
-          where("instanceId", "==", courseInstanceId)
-        );
-        const selectionsSnap = await getDocs(selectionsQuery);
+        // Find all students who selected this course through this slot
+        const slotId = instanceData?.electiveSlotId;
+        const courseId = instanceData?.courseId;
         
-        for (const selectionDoc of selectionsSnap.docs) {
-          const selectionData = selectionDoc.data();
+        if (slotId && courseId) {
+          const selectionsQuery = query(
+            collection(db, COLLECTIONS.ELECTIVE_SELECTIONS),
+            where("slotId", "==", slotId),
+            where("selectedCourseId", "==", courseId)
+          );
+          const selectionsSnap = await getDocs(selectionsQuery);
           
-          // Get student details
-          const studentRef = doc(db, COLLECTIONS.USERS, selectionData.studentId);
-          const studentSnap = await getDoc(studentRef);
-          
-          if (studentSnap.exists()) {
-            const studentData = studentSnap.data() as BaseUserData;
-            enrolledStudents.push({
-              id: selectionDoc.id,
-              studentId: selectionData.studentId,
-              courseInstanceId: courseInstanceId,
-              studentName: studentData.displayName || studentData.name,
-              studentEmail: studentData.email,
-              studentRollNumber: studentData.rollNumber,
-              studentDepartment: studentData.departmentId,
-              studentSemester: studentData.semester,
-              enrollmentType: "elective",
-              enrollmentStatus: "elective-enrolled",
-              enrolledAt: selectionData.selectedAt,
-            } as EnrolledStudent);
+          for (const selectionDoc of selectionsSnap.docs) {
+            const selectionData = selectionDoc.data();
+            
+            // Get student details
+            const studentRef = doc(db, COLLECTIONS.USERS, selectionData.studentId);
+            const studentSnap = await getDoc(studentRef);
+            
+            if (studentSnap.exists()) {
+              const studentData = studentSnap.data() as BaseUserData;
+              enrolledStudents.push({
+                id: selectionDoc.id,
+                studentId: selectionData.studentId,
+                courseInstanceId: courseInstanceId,
+                studentName: studentData.name,
+                studentEmail: studentData.email,
+                enrollmentType: "elective",
+                enrollmentStatus: "elective-enrolled",
+                enrolledAt: selectionData.selectedAt,
+              } as EnrolledStudent);
+            }
           }
         }
       } else {
@@ -119,7 +123,7 @@ export default function AdminEnrolledStudentsScreen() {
         );
         const enrollmentsSnap = await getDocs(enrollmentsQuery);
         
-        for (const enrollmentDoc of enrollmentsSnap.docs) {
+          for (const enrollmentDoc of enrollmentsSnap.docs) {
           const enrollmentData = enrollmentDoc.data() as Enrollment;
           
           // Get student details
@@ -131,11 +135,8 @@ export default function AdminEnrolledStudentsScreen() {
             enrolledStudents.push({
               ...enrollmentData,
               id: enrollmentDoc.id,
-              studentName: studentData.displayName || studentData.name,
+              studentName: studentData.name,
               studentEmail: studentData.email,
-              studentRollNumber: studentData.rollNumber,
-              studentDepartment: studentData.departmentId,
-              studentSemester: studentData.semester,
             });
           } else {
             enrolledStudents.push({
@@ -288,7 +289,7 @@ export default function AdminEnrolledStudentsScreen() {
       setStudentEmail("");
       setShowAddModal(false);
       await fetchEnrolledStudents();
-      Alert.alert("Success", `${studentData.displayName || studentData.name || studentEmail} has been enrolled successfully`);
+      Alert.alert("Success", `${studentData.name || studentEmail} has been enrolled successfully`);
     } catch (error) {
       console.error("Error adding student:", error);
       Alert.alert("Error", "Failed to add student");

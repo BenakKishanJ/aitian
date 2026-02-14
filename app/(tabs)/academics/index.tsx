@@ -22,7 +22,7 @@ import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Icon } from '@/components/ui/icon';
 import { StudentCourseView, CourseInstanceWithDetails, ElectiveSlot, Course, EnrollmentStatus } from '@/types';
-import { collection, query, where, getDocs, getDoc, doc, addDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, addDoc, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { COLLECTIONS, ELECTIVE_SLOT_TYPES, ENROLLMENT_STATUSES } from '@/types/constants';
 
@@ -33,7 +33,10 @@ interface GroupedCourses {
 export default function AcademicsScreen() {
   const { user, userData, role } = useAuth();
   const userSemester = userData?.role === 'student' ? userData.semester : null;
-  const userDept = userData?.role === 'student' ? userData.departmentId : null;
+  // Support both departmentId (new) and department (legacy) for backward compatibility
+  const userDept = userData?.role === 'student' 
+    ? (userData.departmentId || userData.department) 
+    : null;
   const userSection = userData?.role === 'student' ? userData.section : null;
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -122,70 +125,93 @@ export default function AcademicsScreen() {
   }, [role, userSemester]);
 
   // Handle elective course selection
-  const handleElectiveSelect = async (courseId: string) => {
-    if (!selectedSlot || !user || !userDept || !userSection) return;
+  const handleElectiveSelect = useCallback(async (courseId: string) => {
+    // Capture values at function start to avoid stale closure issues
+    const currentSlot = selectedSlot;
+    const currentUser = user;
+    const currentUserDept = userDept;
+    const currentUserSection = userSection;
+    
+    console.log('handleElectiveSelect called with courseId:', courseId);
+    console.log('currentSlot:', currentSlot?.id);
+    console.log('currentUser:', currentUser?.uid);
+    console.log('currentUserDept:', currentUserDept);
+    console.log('currentUserSection:', currentUserSection);
+    
+    if (!currentSlot || !currentUser || !currentUserDept || !currentUserSection) {
+      console.error('Missing required data:', { 
+        currentSlot: !!currentSlot, 
+        currentUser: !!currentUser, 
+        currentUserDept, 
+        currentUserSection 
+      });
+      setElectiveError('Missing required information. Please try again.');
+      return;
+    }
 
     try {
-      // Find the course instance for this slot and student's section
-      const instancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
-      const instancesQuery = query(
-        instancesRef,
-        where('electiveSlotId', '==', selectedSlot.id),
-        where('departmentId', '==', userDept),
-        where('semester', '==', selectedSlot.semester),
-        where('section', '==', userSection),
-        where('isActive', '==', true)
+      // Check if student already has a selection for this slot
+      const existingSelectionsRef = collection(db, COLLECTIONS.ELECTIVE_SELECTIONS);
+      const existingQuery = query(
+        existingSelectionsRef,
+        where('studentId', '==', currentUser.uid),
+        where('slotId', '==', currentSlot.id)
       );
-
-      const instancesSnap = await getDocs(instancesQuery);
+      console.log('Checking existing selections...');
+      const existingSnap = await getDocs(existingQuery);
+      console.log('Existing selections count:', existingSnap.size);
       
-      let instanceId: string;
-      
-      if (instancesSnap.empty) {
-        // No instance exists yet for this section - we need to find an instance and use it
-        const fallbackQuery = query(
-          instancesRef,
-          where('electiveSlotId', '==', selectedSlot.id),
-          where('departmentId', '==', userDept),
-          where('semester', '==', selectedSlot.semester),
-          where('isActive', '==', true)
-        );
-        const fallbackSnap = await getDocs(fallbackQuery);
-        
-        if (fallbackSnap.empty) {
-          setElectiveError('No course instance found for this elective. Please contact admin.');
-          return;
-        }
-        
-        instanceId = fallbackSnap.docs[0].id;
+      if (!existingSnap.empty) {
+        // Student already selected - update the selection
+        console.log('Updating existing selection...');
+        const existingDoc = existingSnap.docs[0];
+        await updateDoc(doc(db, COLLECTIONS.ELECTIVE_SELECTIONS, existingDoc.id), {
+          selectedCourseId: courseId,
+          updatedAt: serverTimestamp(),
+        });
+        console.log('Selection updated successfully');
       } else {
-        instanceId = instancesSnap.docs[0].id;
+        // Create new elective selection
+        console.log('Creating new selection...');
+        await addDoc(collection(db, COLLECTIONS.ELECTIVE_SELECTIONS), {
+          studentId: currentUser.uid,
+          slotId: currentSlot.id,
+          selectedCourseId: courseId,
+          selectedAt: serverTimestamp(),
+        });
+        console.log('New selection created successfully');
       }
-      
-      // Create elective selection
-      await addDoc(collection(db, COLLECTIONS.ELECTIVE_SELECTIONS), {
-        studentId: user.uid,
-        slotId: selectedSlot.id,
-        selectedCourseId: courseId,
-        instanceId: instanceId,
-        selectedAt: serverTimestamp(),
-      });
 
-      // Refresh courses
-      await refresh();
-      
+      // Only close modal and cleanup AFTER successful save
+      console.log('Selection saved successfully, closing modal...');
       setIsElectiveModalOpen(false);
       setSelectedSlot(null);
       setSelectedCourseView(null);
+      
+      // Wait for Firestore to propagate, then refresh
+      console.log('Waiting to refresh...');
+      setTimeout(() => {
+        console.log('Refreshing courses...');
+        refresh();
+      }, 500);
+      
     } catch (err: any) {
       console.error('Error selecting elective:', err);
+      console.error('Error details:', err.message, err.code);
       setElectiveError(err.message || 'Failed to select elective');
+      throw err; // Re-throw so modal can catch it
     }
-  };
+  }, [selectedSlot, user, userDept, userSection, refresh]);
 
   // Open elective selector
-  const openElectiveSelector = async (courseView: StudentCourseView) => {
-    if (!courseView.instance.electiveSlotId) return;
+  const openElectiveSelector = useCallback(async (courseView: StudentCourseView) => {
+    console.log('openElectiveSelector called');
+    console.log('electiveSlotId:', courseView.instance.electiveSlotId);
+    
+    if (!courseView.instance.electiveSlotId) {
+      console.log('No electiveSlotId found');
+      return;
+    }
     
     setSelectedCourseView(courseView);
     setLoadingElectives(true);
@@ -193,27 +219,35 @@ export default function AcademicsScreen() {
 
     try {
       // Fetch the slot details
+      console.log('Fetching slot details...');
       const slotDoc = await getDoc(doc(db, COLLECTIONS.ELECTIVE_SLOTS, courseView.instance.electiveSlotId));
       if (!slotDoc.exists()) {
+        console.log('Slot not found');
         setElectiveError('Elective slot not found');
         return;
       }
       
       const slotData = { id: slotDoc.id, ...slotDoc.data() } as ElectiveSlot;
+      console.log('Slot found:', slotData.name);
       setSelectedSlot(slotData);
 
       // Fetch available courses from slot mapping
+      console.log('Fetching course mappings...');
       const mappingsRef = collection(db, COLLECTIONS.ELECTIVE_SLOT_MAPPINGS);
       const mappingsQuery = query(mappingsRef, where('slotId', '==', slotData.id));
       const mappingsSnap = await getDocs(mappingsQuery);
       
+      console.log('Mappings found:', mappingsSnap.size);
+      
       if (mappingsSnap.empty) {
+        console.log('No mappings found');
         setElectiveError('No courses mapped to this slot yet. Please contact admin.');
         return;
       }
 
       const mapping = mappingsSnap.docs[0].data();
       const courseIds: string[] = mapping.availableCourseIds || [];
+      console.log('Available course IDs:', courseIds);
 
       // Fetch course details
       const coursesList: Course[] = [];
@@ -221,20 +255,26 @@ export default function AcademicsScreen() {
         const courseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, courseId));
         if (courseDoc.exists()) {
           coursesList.push({ id: courseDoc.id, ...courseDoc.data() } as Course);
+          console.log('Loaded course:', courseDoc.data().name);
+        } else {
+          console.log('Course not found:', courseId);
         }
       }
 
+      console.log('Total courses loaded:', coursesList.length);
       setElectiveCourses(coursesList);
       setIsElectiveModalOpen(true);
+      console.log('Modal opened');
     } catch (err: any) {
       console.error('Error loading electives:', err);
+      console.error('Error details:', err.message, err.code);
       setElectiveError(err.message || 'Failed to load elective options');
     } finally {
       setLoadingElectives(false);
     }
-  };
+  }, []);
 
-  const handleCardPress = (courseView: StudentCourseView) => {
+  const handleCardPress = useCallback((courseView: StudentCourseView) => {
     if (role === 'student' && courseView.isElectiveSlot && courseView.selectionStatus === 'not_selected') {
       // This is an elective slot that hasn't been selected yet
       openElectiveSelector(courseView);
@@ -242,7 +282,7 @@ export default function AcademicsScreen() {
       // Navigate to course detail page
       router.push(`/(tabs)/academics/${courseView.instance.id}` as any);
     }
-  };
+  }, [role, openElectiveSelector, router]);
 
   // Filter courses based on search
   const filteredGroupedCourses = useMemo(() => {
@@ -412,8 +452,10 @@ export default function AcademicsScreen() {
       {/* Elective Selector Modal */}
       {role === 'student' && (
         <ElectiveSelectorModal
+          key={`elective-modal-${selectedSlot?.id || 'closed'}`}
           isOpen={isElectiveModalOpen}
           onClose={() => {
+            console.log('Modal onClose called');
             setIsElectiveModalOpen(false);
             setSelectedSlot(null);
             setElectiveError(null);
