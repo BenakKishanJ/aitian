@@ -19,7 +19,7 @@ export interface CalendarEvent {
   title: string;
   type: EventType;
   description?: string;
-  courseInstanceId?: string;
+  courseInstanceId?: string | null;
   courseName?: string;
   createdBy: string;
   startTime: Timestamp;
@@ -35,9 +35,9 @@ export interface CalendarEvent {
  * Expanded event - individual occurrence of a recurring event
  */
 export interface ExpandedEvent extends CalendarEvent {
-  occurrenceId: string; // Unique ID for this specific occurrence
+  occurrenceId?: string; // Unique ID for this specific occurrence
   isRecurring: boolean;
-  originalEventId: string; // ID of the parent recurring event
+  originalEventId?: string; // ID of the parent recurring event
 }
 
 /**

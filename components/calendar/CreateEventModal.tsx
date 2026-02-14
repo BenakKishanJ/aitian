@@ -24,6 +24,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Timestamp } from 'firebase/firestore';
 import { EventType } from '@/lib/hooks/useCalendarEvents';
+import type { EventFormData, ExpandedEvent } from '@/types/calendar';
 
 interface CreateEventModalProps {
   visible: boolean;
@@ -33,21 +34,8 @@ interface CreateEventModalProps {
   userId: string;
   availableCourses?: { id: string; name: string }[];
   initialDate?: Date;
-  editingEvent?: any;
-}
-
-export interface EventFormData {
-  title: string;
-  type: EventType;
-  courseInstanceId?: string | null;
-  startTime: Timestamp;
-  endTime: Timestamp;
-  recurrenceRule?: {
-    frequency: 'weekly' | 'daily';
-    days?: string[];
-    until?: Timestamp;
-  };
-  isAttendanceEnabled?: boolean;
+  editingEvent?: ExpandedEvent | null;
+  isEditing?: boolean;
 }
 
 export function CreateEventModal({
@@ -59,12 +47,14 @@ export function CreateEventModal({
   availableCourses = [],
   initialDate,
   editingEvent,
+  isEditing,
 }: CreateEventModalProps) {
   const [title, setTitle] = useState('');
   const [eventType, setEventType] = useState<EventType>('personal');
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'weekly' | 'daily'>('weekly');
@@ -77,6 +67,8 @@ export function CreateEventModal({
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
+  const [description, setDescription] = useState('');
+  const [location, setLocation] = useState('');
 
   const weekDays = [
     { code: 'MON', label: 'Mon' },
@@ -95,10 +87,13 @@ export function CreateEventModal({
         setTitle(editingEvent.title);
         setEventType(editingEvent.type);
         setSelectedCourse(editingEvent.courseInstanceId || null);
+        setDescription(editingEvent.description || '');
+        setLocation(editingEvent.location || '');
         const start = editingEvent.startTime.toDate();
         const end = editingEvent.endTime.toDate();
         setStartDate(start);
         setStartTime(start);
+        setEndDate(end);
         setEndTime(end);
         setIsRecurring(!!editingEvent.recurrenceRule);
         if (editingEvent.recurrenceRule) {
@@ -116,11 +111,16 @@ export function CreateEventModal({
         setTitle('');
         setEventType('personal');
         setSelectedCourse(null);
+        setDescription('');
+        setLocation('');
         setStartDate(now);
 
         const startTimeDefault = new Date(now);
         startTimeDefault.setMinutes(0);
         setStartTime(startTimeDefault);
+
+        const endDateDefault = new Date(now);
+        setEndDate(endDateDefault);
 
         const endTimeDefault = new Date(startTimeDefault);
         endTimeDefault.setHours(endTimeDefault.getHours() + 1);
@@ -149,6 +149,7 @@ export function CreateEventModal({
     } else if (userRole === 'teacher') {
       types.push(
         { value: 'class', label: 'Class' },
+        { value: 'assignment', label: 'Assignment' },
         { value: 'personal', label: 'Personal' }
       );
     } else if (userRole === 'student') {
@@ -172,7 +173,7 @@ export function CreateEventModal({
       return;
     }
 
-    if ((eventType === 'class' || eventType === 'exam') && !selectedCourse) {
+    if ((eventType === 'class' || eventType === 'exam' || eventType === 'assignment') && !selectedCourse) {
       alert('Please select a course');
       return;
     }
@@ -185,34 +186,32 @@ export function CreateEventModal({
     setSaving(true);
 
     try {
-      // Combine date and time
-      const startDateTime = new Date(startDate);
-      startDateTime.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0);
-
-      const endDateTime = new Date(startDate);
-      endDateTime.setHours(endTime.getHours(), endTime.getMinutes(), 0, 0);
-
       const eventData: EventFormData = {
         title: title.trim(),
         type: eventType,
-        courseInstanceId: selectedCourse,
-        startTime: Timestamp.fromDate(startDateTime),
-        endTime: Timestamp.fromDate(endDateTime),
+        startDate,
+        startTime,
+        endDate,
+        endTime,
+        description,
+        location,
+        isRecurring,
+        isAttendanceEnabled: eventType === 'class' ? isAttendanceEnabled : false,
       };
 
-      // Only add isAttendanceEnabled for class events
-      if (eventType === 'class') {
-        eventData.isAttendanceEnabled = isAttendanceEnabled;
+      // Only add courseInstanceId if it's set (Firebase doesn't accept undefined)
+      if (selectedCourse) {
+        eventData.courseInstanceId = selectedCourse;
       }
 
       if (isRecurring) {
-        eventData.recurrenceRule = {
-          frequency: recurrenceFrequency,
-          days: recurrenceFrequency === 'weekly' ? selectedDays : undefined,
-          until: hasRecurrenceEnd && recurrenceEndDate
-            ? Timestamp.fromDate(recurrenceEndDate)
-            : undefined,
-        };
+        eventData.recurrenceFrequency = recurrenceFrequency;
+        if (recurrenceFrequency === 'weekly' && selectedDays.length > 0) {
+          eventData.recurrenceDays = selectedDays;
+        }
+        if (hasRecurrenceEnd && recurrenceEndDate) {
+          eventData.recurrenceUntil = recurrenceEndDate;
+        }
       }
 
       await onSave(eventData);
@@ -252,7 +251,12 @@ export function CreateEventModal({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           <VStack space="lg" style={styles.form}>
             {/* Title */}
             <View style={styles.field}>
@@ -260,9 +264,14 @@ export function CreateEventModal({
               <TextInput
                 style={styles.input}
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(text) => {
+                  console.log('CreateEventModal title changed:', text);
+                  setTitle(text);
+                }}
                 placeholder="Enter event title"
                 placeholderTextColor="#9CA3AF"
+                editable={true}
+                selectTextOnFocus={true}
               />
             </View>
 
@@ -292,8 +301,8 @@ export function CreateEventModal({
               </View>
             </View>
 
-            {/* Course Selection (for class/exam events) */}
-            {(eventType === 'class' || eventType === 'exam') && availableCourses.length > 0 && (
+            {/* Course Selection (for class/exam/assignment events) */}
+            {(eventType === 'class' || eventType === 'exam' || eventType === 'assignment') && availableCourses.length > 0 && (
               <View style={styles.field}>
                 <HStack space="xs" className="items-center mb-2">
                   <BookOpen size={16} color="#6B7280" />

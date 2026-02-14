@@ -22,20 +22,24 @@ export interface CalendarEvent {
   id: string;
   title: string;
   type: EventType;
+  description?: string;
   courseInstanceId?: string | null;
   courseName?: string;
   createdBy: string;
   startTime: Timestamp;
   endTime: Timestamp;
+  location?: string;
   recurrenceRule?: RecurrenceRule;
   isAttendanceEnabled?: boolean;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface ExpandedEvent extends CalendarEvent {
   isRecurring: boolean;
   occurrenceDate?: Date;
   originalEventId?: string;
+  occurrenceId?: string;
 }
 
 interface UseCalendarEventsProps {
@@ -56,6 +60,7 @@ export function useCalendarEvents({
   const [events, setEvents] = useState<ExpandedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Expand recurring events into individual occurrences
   const expandRecurringEvents = useCallback(
@@ -166,26 +171,10 @@ export function useCalendarEvents({
     // We need to get recurring events that started before our range
     const queryStart = new Date(startDate);
     queryStart.setDate(queryStart.getDate() - 90); // Get events from 90 days before
-
-    // Add type filter if specified
-    if (eventTypes && eventTypes.length > 0) {
-      constraints.push(where('type', 'in', eventTypes));
-    }
-
-    // Add user filter if specified (for personal events)
-    if (userId) {
-      // This will need to be combined with OR logic in the component
-      // For now, we fetch all and filter in memory
-    }
-
-    // Add course instance filter if specified
-    if (courseInstanceIds && courseInstanceIds.length > 0) {
-      // Firestore 'in' operator supports up to 10 values
-      if (courseInstanceIds.length <= 10) {
-        constraints.push(where('courseInstanceId', 'in', courseInstanceIds));
-      }
-    }
-
+    
+    // Add date range filter - only fetch events that start within our query window
+    // Note: Using only >= filter to avoid composite index requirements
+    constraints.push(where('startTime', '>=', Timestamp.fromDate(queryStart)));
     constraints.push(orderBy('startTime', 'asc'));
 
     const q = query(eventsRef, ...constraints);
@@ -197,47 +186,89 @@ export function useCalendarEvents({
 
         snapshot.forEach((doc) => {
           const data = doc.data();
+          
+          // Skip soft-deleted events
+          if (data.isDeleted === true) {
+            return;
+          }
+          
           fetchedEvents.push({
             id: doc.id,
             title: data.title,
             type: data.type,
+            description: data.description,
             courseInstanceId: data.courseInstanceId,
             courseName: data.courseName,
             createdBy: data.createdBy,
             startTime: data.startTime,
             endTime: data.endTime,
+            location: data.location,
             recurrenceRule: data.recurrenceRule,
             isAttendanceEnabled: data.isAttendanceEnabled,
             createdAt: data.createdAt,
           });
         });
 
-        // Filter by userId if needed (personal events or created by user)
-        let filteredEvents = fetchedEvents;
-        if (userId) {
-          filteredEvents = fetchedEvents.filter(
-            (event) =>
-              event.createdBy === userId ||
-              event.type !== 'personal' ||
-              !event.courseInstanceId
-          );
-        }
+        // Apply all filters in memory to avoid Firestore composite index requirements
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        
+        let filteredEvents = fetchedEvents.filter((event) => {
+          const eventStart = event.startTime.toDate();
+          
+          // Filter by end date
+          if (eventStart > end) {
+            return false;
+          }
+          
+          // Filter by event type
+          if (eventTypes && eventTypes.length > 0) {
+            if (!eventTypes.includes(event.type)) {
+              return false;
+            }
+          }
+          
+          // Filter by course instance (but allow events without courseInstanceId - like personal events)
+          if (courseInstanceIds && courseInstanceIds.length > 0) {
+            // If event has a courseInstanceId, it must be in the allowed list
+            // If event has no courseInstanceId (personal events), allow it through
+            if (event.courseInstanceId && !courseInstanceIds.includes(event.courseInstanceId)) {
+              return false;
+            }
+          }
+          
+          // Filter by user (personal events only visible to creator)
+          if (userId && event.type === 'personal' && event.createdBy !== userId) {
+            return false;
+          }
+          
+          return true;
+        });
 
         // Expand recurring events
         const expandedEvents = expandRecurringEvents(filteredEvents);
+
+        console.log(`[useCalendarEvents] Fetched ${fetchedEvents.length} base events, expanded to ${expandedEvents.length} events`);
+        console.log('[useCalendarEvents] Date range:', startDate.toISOString(), 'to', endDate.toISOString());
 
         setEvents(expandedEvents);
         setLoading(false);
       },
       (err) => {
         console.error('Error fetching calendar events:', err);
+        console.error('Query constraints:', constraints.map(c => c.toString()));
+        console.error('Start date:', startDate, 'End date:', endDate);
         setError(err.message);
         setLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, [startDate, endDate, userId, courseInstanceIds, eventTypes, expandRecurringEvents]);
+  }, [startDate, endDate, userId, courseInstanceIds, eventTypes, expandRecurringEvents, refreshTrigger]);
 
-  return { events, loading, error };
+  const refresh = useCallback(() => {
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
+
+  return { events, loading, error, refresh };
 }

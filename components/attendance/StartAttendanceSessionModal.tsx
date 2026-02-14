@@ -20,6 +20,7 @@ interface StartAttendanceSessionModalProps {
   onClose: () => void;
   courseInstanceId: string;
   courseName: string;
+  calendarEventId?: string;
   onSessionStarted?: (sessionId: string) => void;
 }
 
@@ -28,6 +29,7 @@ export function StartAttendanceSessionModal({
   onClose,
   courseInstanceId,
   courseName,
+  calendarEventId,
   onSessionStarted,
 }: StartAttendanceSessionModalProps) {
   const [title, setTitle] = useState('');
@@ -43,7 +45,7 @@ export function StartAttendanceSessionModal({
 
     try {
       const sessionId = await startSession({
-        eventId: '', // Optional - can link to calendar event
+        calendarEventId,
         courseInstanceId,
         title: title.trim(),
       });

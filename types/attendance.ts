@@ -6,7 +6,7 @@ import { AttendanceStatus } from './constants';
  */
 export interface AttendanceSession {
   id: string;
-  eventId: string;
+  calendarEventId?: string; // Optional link to calendar event
   courseInstanceId: string;
   title?: string;
   startedBy: string;
@@ -56,7 +56,7 @@ export interface AttendanceSessionWithRecords extends AttendanceSession {
  * Attendance session creation data
  */
 export interface AttendanceSessionCreateData {
-  eventId: string;
+  calendarEventId?: string;
   courseInstanceId: string;
   title?: string;
 }

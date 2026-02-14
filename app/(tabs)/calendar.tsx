@@ -24,15 +24,13 @@ import { useAuth } from "@/lib/AuthContext";
 import {
   useCalendarEvents,
   EventType,
-  ExpandedEvent,
 } from "@/lib/hooks/useCalendarEvents";
+import type { ExpandedEvent } from "@/types/calendar";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import { EventList } from "@/components/calendar/EventList";
-import {
-  CreateEventModal,
-  EventFormData,
-} from "@/components/calendar/CreateEventModal";
+import { CreateEventModal } from "@/components/calendar/CreateEventModal";
+import type { EventFormData } from "@/types/calendar";
 import {
   formatDate,
   getMonthRange,
@@ -49,8 +47,14 @@ import {
   query,
   where,
   getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { Alert } from "react-native";
+import { canEditEvent } from "@/lib/calendarPermissions";
+import { undefinedToNull } from "@/lib/utils/firebaseSanitizer";
 
 type ViewMode = "month" | "week";
 
@@ -67,9 +71,12 @@ export default function CalendarScreen() {
   const [availableCourses, setAvailableCourses] = useState<
     { id: string; name: string }[]
   >([]);
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<ExpandedEvent | null>(
     null,
   );
+  const [showEventDetail, setShowEventDetail] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Get date range based on view mode
   const dateRange = useMemo(() => {
@@ -78,32 +85,63 @@ export default function CalendarScreen() {
       : getWeekRange(currentDate);
   }, [currentDate, viewMode]);
 
-  // Fetch course instances for teacher/admin
+  // Fetch course instances for teacher/admin AND enrolled courses for students
   React.useEffect(() => {
     const fetchCourses = async () => {
-      if (!user || role === "student" || role === "parent") return;
+      if (!user) return;
 
       try {
-        const coursesRef = collection(db, "courseInstances");
-        let q;
+        let courseIds: string[] = [];
 
-        if (role === "teacher") {
-          q = query(
+        if (role === "student") {
+          // Get enrolled courses for student
+          const enrollmentsRef = collection(db, "enrollments");
+          const enrollmentsQuery = query(
+            enrollmentsRef,
+            where("studentId", "==", user.uid)
+          );
+          const enrollmentsSnap = await getDocs(enrollmentsQuery);
+          courseIds = enrollmentsSnap.docs.map(
+            (doc) => doc.data().courseInstanceId
+          );
+        } else if (role === "teacher") {
+          // Get courses taught by teacher
+          const coursesRef = collection(db, "courseInstances");
+          const q = query(
             coursesRef,
             where("teacherIds", "array-contains", user.uid),
-            where("isActive", "==", true),
+            where("isActive", "==", true)
           );
+          const snapshot = await getDocs(q);
+          courseIds = snapshot.docs.map((doc) => doc.id);
         } else if (role === "admin") {
-          q = query(coursesRef, where("isActive", "==", true));
+          // Admin sees all active courses
+          const coursesRef = collection(db, "courseInstances");
+          const q = query(coursesRef, where("isActive", "==", true));
+          const snapshot = await getDocs(q);
+          courseIds = snapshot.docs.map((doc) => doc.id);
         }
 
-        if (q) {
-          const snapshot = await getDocs(q);
-          const courses = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            name: doc.data().courseName || "Unknown Course",
-          }));
+        // Fetch course details
+        if (courseIds.length > 0) {
+          const coursesRef = collection(db, "courseInstances");
+          const courses: { id: string; name: string }[] = [];
+
+          // Firestore 'in' query supports up to 10 items, so we batch
+          for (let i = 0; i < courseIds.length; i += 10) {
+            const batchIds = courseIds.slice(i, i + 10);
+            const q = query(coursesRef, where("__name__", "in", batchIds));
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach((doc) => {
+              courses.push({
+                id: doc.id,
+                name: doc.data().courseName || "Unknown Course",
+              });
+            });
+          }
+
           setAvailableCourses(courses);
+          setEnrolledCourseIds(courseIds);
         }
       } catch (error) {
         console.error("Error fetching courses:", error);
@@ -118,6 +156,7 @@ export default function CalendarScreen() {
     startDate: dateRange.start,
     endDate: dateRange.end,
     userId: user?.uid,
+    courseInstanceIds: role === 'student' || role === 'teacher' ? enrolledCourseIds : undefined,
     eventTypes: selectedFilters.length > 0 ? selectedFilters : undefined,
   });
 
@@ -157,8 +196,7 @@ export default function CalendarScreen() {
 
   const handleEventPress = (event: ExpandedEvent) => {
     setSelectedEvent(event);
-    // TODO: Navigate to event detail page or show detail modal
-    console.log("Event pressed:", event);
+    setShowEventDetail(true);
   };
 
   const handleCreateEvent = () => {
@@ -170,32 +208,164 @@ export default function CalendarScreen() {
       const eventsRef = collection(db, "calendarEvents");
 
       // Get course name if courseInstanceId is provided
-      let courseName = undefined;
+      let courseName = null;
       if (eventData.courseInstanceId) {
         const course = availableCourses.find(
           (c) => c.id === eventData.courseInstanceId,
         );
-        courseName = course?.name;
+        courseName = course?.name || null;
       }
 
+      // Build event document, ensuring no undefined values
       const eventDoc: any = {
-        ...eventData,
+        title: eventData.title,
+        type: eventData.type,
         createdBy: user?.uid,
         createdAt: Timestamp.now(),
+        startTime: Timestamp.fromDate(eventData.startDate),
+        endTime: Timestamp.fromDate(eventData.endDate),
+        isAttendanceEnabled: eventData.isAttendanceEnabled,
+        courseInstanceId: eventData.courseInstanceId || null,
+        courseName: courseName,
       };
 
-      // Only add courseName if it exists
-      if (courseName) {
-        eventDoc.courseName = courseName;
+      // Only add optional fields if they have values (not undefined)
+      if (eventData.description) {
+        eventDoc.description = eventData.description;
+      }
+      if (eventData.location) {
+        eventDoc.location = eventData.location;
       }
 
-      await addDoc(eventsRef, eventDoc);
+      // Handle recurrence
+      if (eventData.isRecurring) {
+        eventDoc.recurrenceRule = {
+          frequency: eventData.recurrenceFrequency,
+          days: eventData.recurrenceDays || null,
+          until: eventData.recurrenceUntil
+            ? Timestamp.fromDate(eventData.recurrenceUntil)
+            : null,
+        };
+      } else {
+        eventDoc.recurrenceRule = null;
+      }
+
+      // Sanitize to remove any undefined values before saving to Firebase
+      const sanitizedEventDoc = undefinedToNull(eventDoc);
+      await addDoc(eventsRef, sanitizedEventDoc);
 
       setShowCreateModal(false);
     } catch (error) {
       console.error("Error creating event:", error);
       throw error;
     }
+  };
+
+  const handleUpdateEvent = async (eventData: EventFormData) => {
+    if (!user || !selectedEvent) return;
+
+    try {
+      // Check if user can edit this event
+      if (!canEditEvent(role || 'student', selectedEvent.createdBy, user.uid)) {
+        Alert.alert("Error", "You don't have permission to edit this event");
+        return;
+      }
+
+      // Get course name if courseInstanceId is provided
+      let courseName = null;
+      if (eventData.courseInstanceId) {
+        const course = availableCourses.find(
+          (c) => c.id === eventData.courseInstanceId,
+        );
+        courseName = course?.name || null;
+      }
+
+      // Build event document, ensuring no undefined values
+      const eventDoc: any = {
+        title: eventData.title,
+        type: eventData.type,
+        courseInstanceId: eventData.courseInstanceId || null,
+        courseName: courseName,
+        startTime: Timestamp.fromDate(eventData.startDate),
+        endTime: Timestamp.fromDate(eventData.endDate),
+        isAttendanceEnabled: eventData.isAttendanceEnabled,
+        updatedAt: Timestamp.now(),
+      };
+
+      // Only add optional fields if they have values (not undefined)
+      if (eventData.description) {
+        eventDoc.description = eventData.description;
+      } else {
+        eventDoc.description = null;
+      }
+      if (eventData.location) {
+        eventDoc.location = eventData.location;
+      } else {
+        eventDoc.location = null;
+      }
+
+      if (eventData.isRecurring) {
+        eventDoc.recurrenceRule = {
+          frequency: eventData.recurrenceFrequency,
+          days: eventData.recurrenceDays || null,
+          until: eventData.recurrenceUntil
+            ? Timestamp.fromDate(eventData.recurrenceUntil)
+            : null,
+        };
+      } else {
+        eventDoc.recurrenceRule = null;
+      }
+
+      // Sanitize to remove any undefined values before saving to Firebase
+      const sanitizedEventDoc = undefinedToNull(eventDoc);
+      await updateDoc(
+        doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id),
+        sanitizedEventDoc
+      );
+
+      setShowCreateModal(false);
+      setShowEventDetail(false);
+      setIsEditing(false);
+      setSelectedEvent(null);
+      
+      Alert.alert("Success", "Event updated successfully");
+    } catch (error) {
+      console.error("Error updating event:", error);
+      Alert.alert("Error", "Failed to update event");
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string, createdBy: string) => {
+    if (!user) return;
+
+    // Check if user can delete this event
+    if (!canEditEvent(role || 'student', createdBy, user.uid)) {
+      Alert.alert("Error", "You don't have permission to delete this event");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Event",
+      "Are you sure you want to delete this event?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, "calendarEvents", eventId));
+              setShowEventDetail(false);
+              setSelectedEvent(null);
+              Alert.alert("Success", "Event deleted successfully");
+            } catch (error) {
+              console.error("Error deleting event:", error);
+              Alert.alert("Error", "Failed to delete event");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleRefresh = async () => {
@@ -397,13 +567,156 @@ export default function CalendarScreen() {
       {/* Create Event Modal */}
       <CreateEventModal
         visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSave={handleSaveEvent}
+        onClose={() => {
+          setShowCreateModal(false);
+          setIsEditing(false);
+          setSelectedEvent(null);
+        }}
+        onSave={isEditing ? handleUpdateEvent : handleSaveEvent}
         userRole={role || "student"}
         userId={user?.uid || ""}
         availableCourses={availableCourses}
         initialDate={selectedDate || currentDate}
+        editingEvent={isEditing ? selectedEvent : null}
+        isEditing={isEditing}
       />
+
+      {/* Event Detail Modal */}
+      <Modal
+        visible={showEventDetail}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowEventDetail(false);
+          setSelectedEvent(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.eventDetailModal}>
+            <View style={styles.eventDetailHeader}>
+              <Text style={styles.eventDetailTitle}>
+                {selectedEvent?.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEventDetail(false);
+                  setSelectedEvent(null);
+                }}
+                style={styles.closeButton}
+              >
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.eventDetailContent}>
+              <VStack space="md">
+                <HStack space="sm" style={styles.eventTypeBadge}>
+                  <View
+                    style={[
+                      styles.eventTypeDot,
+                      {
+                        backgroundColor:
+                          selectedEvent?.type === "exam"
+                            ? "#EF4444"
+                            : selectedEvent?.type === "assignment"
+                            ? "#3B82F6"
+                            : selectedEvent?.type === "personal"
+                            ? "#10B981"
+                            : "#000000",
+                      },
+                    ]}
+                  />
+                  <Text style={styles.eventTypeText}>
+                    {selectedEvent?.type
+                      ? selectedEvent.type.charAt(0).toUpperCase() +
+                        selectedEvent.type.slice(1)
+                      : ""}
+                  </Text>
+                </HStack>
+
+                {selectedEvent?.courseName && (
+                  <HStack space="sm">
+                    <CalendarIcon size={16} color="#6B7280" />
+                    <Text style={styles.eventDetailLabel}>
+                      {selectedEvent.courseName}
+                    </Text>
+                  </HStack>
+                )}
+
+                <HStack space="sm">
+                  <CalendarIcon size={16} color="#6B7280" />
+                  <Text style={styles.eventDetailLabel}>
+                    {selectedEvent?.startTime
+                      ? formatDate(selectedEvent.startTime.toDate(), "full")
+                      : ""}
+                  </Text>
+                </HStack>
+
+                <HStack space="sm">
+                  <CalendarIcon size={16} color="#6B7280" />
+                  <Text style={styles.eventDetailLabel}>
+                    {selectedEvent?.startTime && selectedEvent?.endTime
+                      ? `${selectedEvent.startTime.toDate().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${selectedEvent.endTime.toDate().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                      : ""}
+                  </Text>
+                </HStack>
+
+                {selectedEvent?.location && (
+                  <HStack space="sm">
+                    <CalendarIcon size={16} color="#6B7280" />
+                    <Text style={styles.eventDetailLabel}>
+                      Location: {selectedEvent.location}
+                    </Text>
+                  </HStack>
+                )}
+
+                {selectedEvent?.description && (
+                  <View style={styles.descriptionContainer}>
+                    <Text style={styles.descriptionLabel}>Description</Text>
+                    <Text style={styles.descriptionText}>
+                      {selectedEvent.description}
+                    </Text>
+                  </View>
+                )}
+
+                {selectedEvent?.isAttendanceEnabled && (
+                  <View style={styles.attendanceBadge}>
+                    <Text style={styles.attendanceText}>
+                      Attendance Enabled
+                    </Text>
+                  </View>
+                )}
+              </VStack>
+            </ScrollView>
+
+            {selectedEvent && user && canEditEvent(role || 'student', selectedEvent.createdBy, user.uid) && (
+              <View style={styles.eventDetailFooter}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.editButton]}
+                  onPress={() => {
+                    setIsEditing(true);
+                    setShowEventDetail(false);
+                    setShowCreateModal(true);
+                  }}
+                >
+                  <Text style={styles.actionButtonText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.deleteButton]}
+                  onPress={() =>
+                    selectedEvent && handleDeleteEvent(
+                      selectedEvent.originalEventId || selectedEvent.id,
+                      selectedEvent.createdBy
+                    )
+                  }
+                >
+                  <Text style={styles.actionButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Filter Modal */}
       <Modal
@@ -705,6 +1018,114 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   filterButtonTextPrimary: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  eventDetailModal: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "80%",
+  },
+  eventDetailHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  eventDetailTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#000000",
+    flex: 1,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: "#6B7280",
+  },
+  eventDetailContent: {
+    padding: 20,
+  },
+  eventTypeBadge: {
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  eventTypeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  eventTypeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#000000",
+  },
+  eventDetailLabel: {
+    fontSize: 14,
+    color: "#374151",
+  },
+  descriptionContainer: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  descriptionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#000000",
+    marginBottom: 8,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 20,
+  },
+  attendanceBadge: {
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  attendanceText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#059669",
+  },
+  eventDetailFooter: {
+    flexDirection: "row",
+    padding: 20,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  editButton: {
+    backgroundColor: "#000000",
+  },
+  deleteButton: {
+    backgroundColor: "#EF4444",
+  },
+  actionButtonText: {
     fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",

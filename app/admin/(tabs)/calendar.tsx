@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
@@ -32,12 +33,11 @@ import {
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import { EventList } from "@/components/calendar/EventList";
-import {
-  CreateEventModal,
-  EventFormData,
-} from "@/components/calendar/CreateEventModal";
+import { CreateEventModal } from "@/components/calendar/CreateEventModal";
+import type { EventFormData } from "@/types/calendar";
 import {
   formatDate,
+  formatTime,
   getMonthRange,
   getWeekRange,
   getPreviousMonth,
@@ -58,6 +58,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Alert } from "react-native";
+import { undefinedToNull } from "@/lib/utils/firebaseSanitizer";
 
 type ViewMode = "month" | "week";
 
@@ -80,6 +81,8 @@ export default function AdminCalendarScreen() {
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   // Get date range based on view mode
   const dateRange = useMemo(() => {
@@ -197,38 +200,126 @@ export default function AdminCalendarScreen() {
         formData.endTime.getMinutes()
       );
 
-      const eventData = {
+      const eventData: any = {
         title: formData.title,
         type: formData.type,
-        description: formData.description,
         courseInstanceId: formData.courseInstanceId || null,
         courseName: formData.courseInstanceId
           ? availableCourses.find((c) => c.id === formData.courseInstanceId)
-              ?.name
+              ?.name || null
           : null,
         createdBy: user.uid,
         startTime: Timestamp.fromDate(startDateTime),
         endTime: Timestamp.fromDate(endDateTime),
-        location: formData.location,
-        recurrenceRule: formData.isRecurring
-          ? {
-              frequency: formData.recurrenceFrequency,
-              days: formData.recurrenceDays,
-              until: formData.recurrenceUntil
-                ? Timestamp.fromDate(formData.recurrenceUntil)
-                : null,
-            }
-          : null,
         isAttendanceEnabled: formData.isAttendanceEnabled,
         createdAt: Timestamp.now(),
       };
 
-      await addDoc(collection(db, "calendarEvents"), eventData);
+      // Only add optional fields if they have values (not undefined)
+      if (formData.description) {
+        eventData.description = formData.description;
+      }
+      if (formData.location) {
+        eventData.location = formData.location;
+      }
+
+      // Handle recurrence
+      if (formData.isRecurring) {
+        eventData.recurrenceRule = {
+          frequency: formData.recurrenceFrequency,
+          days: formData.recurrenceDays || null,
+          until: formData.recurrenceUntil
+            ? Timestamp.fromDate(formData.recurrenceUntil)
+            : null,
+        };
+      } else {
+        eventData.recurrenceRule = null;
+      }
+
+      // Sanitize to remove any undefined values before saving to Firebase
+      const sanitizedEventData = undefinedToNull(eventData);
+      await addDoc(collection(db, "calendarEvents"), sanitizedEventData);
       setShowCreateModal(false);
       refreshEvents();
     } catch (error) {
       console.error("Error creating event:", error);
       Alert.alert("Error", "Failed to create event");
+    }
+  };
+
+  // Event update handler
+  const handleUpdateEvent = async (formData: EventFormData) => {
+    if (!user || !selectedEvent) return;
+
+    try {
+      setUpdating(true);
+
+      const startDateTime = new Date(formData.startDate);
+      startDateTime.setHours(
+        formData.startTime.getHours(),
+        formData.startTime.getMinutes()
+      );
+
+      const endDateTime = new Date(formData.endDate);
+      endDateTime.setHours(
+        formData.endTime.getHours(),
+        formData.endTime.getMinutes()
+      );
+
+      const eventData: any = {
+        title: formData.title,
+        type: formData.type,
+        courseInstanceId: formData.courseInstanceId || null,
+        courseName: formData.courseInstanceId
+          ? availableCourses.find((c) => c.id === formData.courseInstanceId)
+              ?.name || null
+          : null,
+        startTime: Timestamp.fromDate(startDateTime),
+        endTime: Timestamp.fromDate(endDateTime),
+        isAttendanceEnabled: formData.isAttendanceEnabled,
+        updatedAt: Timestamp.now(),
+      };
+
+      // Only add optional fields if they have values (not undefined)
+      if (formData.description) {
+        eventData.description = formData.description;
+      } else {
+        eventData.description = null;
+      }
+      if (formData.location) {
+        eventData.location = formData.location;
+      } else {
+        eventData.location = null;
+      }
+
+      // Handle recurrence
+      if (formData.isRecurring) {
+        eventData.recurrenceRule = {
+          frequency: formData.recurrenceFrequency,
+          days: formData.recurrenceDays || null,
+          until: formData.recurrenceUntil
+            ? Timestamp.fromDate(formData.recurrenceUntil)
+            : null,
+        };
+      } else {
+        eventData.recurrenceRule = null;
+      }
+
+      // Sanitize to remove any undefined values before saving to Firebase
+      const sanitizedEventData = undefinedToNull(eventData);
+      await updateDoc(doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id), sanitizedEventData);
+      
+      setShowCreateModal(false);
+      setShowEventDetail(false);
+      setSelectedEvent(null);
+      setIsEditing(false);
+      
+      Alert.alert("Success", "Event updated successfully");
+    } catch (error) {
+      console.error("Error updating event:", error);
+      Alert.alert("Error", "Failed to update event");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -247,7 +338,6 @@ export default function AdminCalendarScreen() {
               await deleteDoc(doc(db, "calendarEvents", eventId));
               setShowEventDetail(false);
               setSelectedEvent(null);
-              refreshEvents();
             } catch (error) {
               console.error("Error deleting event:", error);
               Alert.alert("Error", "Failed to delete event");
@@ -334,12 +424,13 @@ export default function AdminCalendarScreen() {
         {showSearch && (
           <View style={styles.searchContainer}>
             <Search size={16} color="#9CA3AF" />
-            <Text
+            <TextInput
               style={styles.searchInput}
-              // Using Text component for display, actual implementation would use TextInput
-            >
-              {searchQuery || "Search events..."}
-            </Text>
+              placeholder="Search events..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
           </View>
         )}
 
@@ -386,7 +477,7 @@ export default function AdminCalendarScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={handleToday}>
             <Text style={styles.currentDate}>
-              {formatDate(currentDate, "MMMM yyyy")}
+              {formatDate(currentDate, "month-year")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleNext} style={styles.navButton}>
@@ -444,13 +535,15 @@ export default function AdminCalendarScreen() {
           <MonthCalendar
             currentDate={currentDate}
             events={filteredEvents}
-            onDateSelect={handleDateSelect}
+            onDatePress={handleDateSelect}
             selectedDate={selectedDate}
           />
         ) : (
           <WeekCalendar
             currentDate={currentDate}
             events={filteredEvents}
+            selectedDate={selectedDate}
+            onDatePress={handleDateSelect}
             onEventPress={(event) => {
               setSelectedEvent(event);
               setShowEventDetail(true);
@@ -492,13 +585,26 @@ export default function AdminCalendarScreen() {
         visible={showCreateModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowCreateModal(false)}
+        onRequestClose={() => {
+          setShowCreateModal(false);
+          setIsEditing(false);
+          setSelectedEvent(null);
+        }}
       >
         <CreateEventModal
-          onClose={() => setShowCreateModal(false)}
-          onSubmit={handleCreateEvent}
+          visible={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+            setIsEditing(false);
+            setSelectedEvent(null);
+          }}
+          onSave={isEditing ? handleUpdateEvent : handleCreateEvent}
+          userRole={role || 'admin'}
+          userId={user?.uid || ''}
           availableCourses={availableCourses}
           initialDate={selectedDate || new Date()}
+          editingEvent={isEditing ? selectedEvent : null}
+          isEditing={isEditing}
         />
       </Modal>
 
@@ -560,8 +666,7 @@ export default function AdminCalendarScreen() {
                   <CalendarIcon size={16} color="#6B7280" />
                   <Text style={styles.eventDetailLabel}>
                     {selectedEvent?.startTime
-                      ? formatDate(selectedEvent.startTime.toDate(),
-                          "EEEE, MMMM d, yyyy")
+                      ? formatDate(selectedEvent.startTime.toDate(), 'full')
                       : ""}
                   </Text>
                 </HStack>
@@ -570,13 +675,7 @@ export default function AdminCalendarScreen() {
                   <CalendarIcon size={16} color="#6B7280" />
                   <Text style={styles.eventDetailLabel}>
                     {selectedEvent?.startTime && selectedEvent?.endTime
-                      ? `${formatDate(
-                          selectedEvent.startTime.toDate(),
-                          "h:mm a"
-                        )} - ${formatDate(
-                          selectedEvent.endTime.toDate(),
-                          "h:mm a"
-                        )}`
+                      ? `${formatTime(selectedEvent.startTime.toDate())} - ${formatTime(selectedEvent.endTime.toDate())}`
                       : ""}
                   </Text>
                 </HStack>
@@ -613,8 +712,9 @@ export default function AdminCalendarScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, styles.editButton]}
                 onPress={() => {
-                  // TODO: Implement edit functionality
-                  Alert.alert("Info", "Edit functionality coming soon");
+                  setIsEditing(true);
+                  setShowEventDetail(false);
+                  setShowCreateModal(true);
                 }}
               >
                 <Edit3 size={18} color="#FFFFFF" />

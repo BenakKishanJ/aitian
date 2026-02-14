@@ -39,6 +39,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import { undefinedToNull } from "@/lib/utils/firebaseSanitizer";
 
 interface CalendarEvent {
   id: string;
@@ -65,6 +66,7 @@ interface CourseInstance {
   departmentId: string;
   semester: number;
   section: string;
+  courseName: string;
 }
 
 export default function AdminEventsScreen() {
@@ -180,8 +182,24 @@ export default function AdminEventsScreen() {
       );
       const instancesSnap = await getDocs(instancesQuery);
 
-      const instances = instancesSnap.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() } as CourseInstance)
+      const instances = await Promise.all(
+        instancesSnap.docs.map(async (docSnap) => {
+          const data = docSnap.data();
+          // Get course name
+          const coursesRef = collection(db, "courses");
+          const courseQuery = query(coursesRef, where("__name__", "==", data.courseId));
+          const courseSnap = await getDocs(courseQuery);
+          const courseName = courseSnap.docs[0]?.data().name || "Unknown Course";
+
+          return {
+            id: docSnap.id,
+            courseId: data.courseId,
+            departmentId: data.departmentId,
+            semester: data.semester,
+            section: data.section,
+            courseName,
+          } as CourseInstance;
+        })
       );
       setCourseInstances(instances);
     } catch (error) {
@@ -192,6 +210,15 @@ export default function AdminEventsScreen() {
   const handleCreateEvent = async () => {
     if (!eventTitle.trim() || !startDate || !startTime || !endTime) {
       Alert.alert("Error", "Please fill in all required fields");
+      return;
+    }
+
+    // Validate course selection for class/exam/assignment
+    if (
+      (eventType === "class" || eventType === "exam" || eventType === "assignment") &&
+      !selectedCourseId
+    ) {
+      Alert.alert("Error", "Please select a course");
       return;
     }
 
@@ -206,7 +233,7 @@ export default function AdminEventsScreen() {
         return;
       }
 
-      let recurrenceRule = undefined;
+      let recurrenceRule: any = null;
       if (isRecurring) {
         if (recurringFrequency === "weekly" && selectedDays.length === 0) {
           Alert.alert("Error", "Please select at least one day for weekly recurrence");
@@ -216,26 +243,34 @@ export default function AdminEventsScreen() {
 
         recurrenceRule = {
           frequency: recurringFrequency,
-          days: recurringFrequency === "weekly" ? selectedDays : undefined,
+          days: recurringFrequency === "weekly" ? selectedDays : null,
           until: recurringUntil
             ? Timestamp.fromDate(new Date(recurringUntil))
-            : undefined,
+            : null,
         };
       }
 
-      const newEvent = {
+      // Get course name if course is selected
+      const selectedCourse = courseInstances.find(
+        (c) => c.id === selectedCourseId
+      );
+
+      const newEvent: any = {
         title: eventTitle.trim(),
         type: eventType,
         courseInstanceId: selectedCourseId || null,
+        courseName: selectedCourse?.courseName || null,
         createdBy: user?.uid,
         startTime: Timestamp.fromDate(startDateTime),
         endTime: Timestamp.fromDate(endDateTime),
-        recurrenceRule: recurrenceRule || null,
+        recurrenceRule: recurrenceRule,
         isAttendanceEnabled: eventType === "class" ? attendanceEnabled : false,
         createdAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, "calendarEvents"), newEvent);
+      // Sanitize to remove any undefined values before saving to Firebase
+      const sanitizedEvent = undefinedToNull(newEvent);
+      await addDoc(collection(db, "calendarEvents"), sanitizedEvent);
 
       Alert.alert("Success", "Event created successfully");
       resetForm();
@@ -489,10 +524,15 @@ export default function AdminEventsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
-            <ScrollView contentContainerStyle={styles.modalContent}>
-              <VStack space="lg">
-                <HStack className="justify-between items-center">
-                  <Text className="text-xl font-bold text-black">
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 24, paddingBottom: 100 }}
+              keyboardShouldPersistTaps="always"
+            >
+              <View style={{ gap: 24 }}>
+                {/* Header */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 20, fontWeight: "bold", color: "#000000" }}>
                     Create Event
                   </Text>
                   <TouchableOpacity
@@ -501,30 +541,40 @@ export default function AdminEventsScreen() {
                       setShowEventModal(false);
                     }}
                   >
-                    <Icon as={X} size="lg" className="text-gray-500" />
+                    <Text style={{ fontSize: 24, color: "#6B7280" }}>✕</Text>
                   </TouchableOpacity>
-                </HStack>
+                </View>
 
                 {/* Title */}
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
                     Event Title *
                   </Text>
                   <TextInput
-                    style={styles.input}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      borderRadius: 12,
+                      padding: 12,
+                      fontSize: 16,
+                      color: "#000000",
+                      backgroundColor: "#F9FAFB",
+                      minHeight: 48,
+                    }}
                     placeholder="e.g., DBMS Lecture"
                     value={eventTitle}
                     onChangeText={setEventTitle}
                     placeholderTextColor="#9CA3AF"
+                    autoFocus={true}
                   />
-                </VStack>
+                </View>
 
                 {/* Event Type */}
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
                     Event Type *
                   </Text>
-                  <HStack space="sm" className="flex-wrap">
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {["class", "exam", "assignment", "personal"].map((type) => (
                       <TouchableOpacity
                         key={type}
@@ -539,36 +589,60 @@ export default function AdminEventsScreen() {
                         ]}
                       >
                         <Text
-                          className={
-                            eventType === type
-                              ? "text-white text-sm font-semibold"
-                              : "text-gray-700 text-sm"
-                          }
+                          style={{
+                            fontSize: 14,
+                            fontWeight: eventType === type ? "600" : "400",
+                            color: eventType === type ? "#FFFFFF" : "#374151",
+                          }}
                         >
                           {type.charAt(0).toUpperCase() + type.slice(1)}
                         </Text>
                       </TouchableOpacity>
                     ))}
-                  </HStack>
-                </VStack>
+                  </View>
+                </View>
 
-                {/* Course (for class/exam) */}
-                {(eventType === "class" || eventType === "exam") && (
-                  <VStack space="xs">
-                    <Text className="text-sm font-semibold text-gray-700">
-                      Course (Optional)
+                {/* Course (for class/exam/assignment) */}
+                {(eventType === "class" || eventType === "exam" || eventType === "assignment") && courseInstances.length > 0 && (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
+                      Course *
                     </Text>
-                    <View style={styles.pickerContainer}>
-                      <Text className="text-sm text-gray-500">
-                        Select course instance...
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        {courseInstances.map((instance) => (
+                          <TouchableOpacity
+                            key={instance.id}
+                            onPress={() => setSelectedCourseId(instance.id)}
+                            style={[
+                              styles.typeChip,
+                              selectedCourseId === instance.id && styles.typeChipActive,
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 14,
+                                fontWeight: selectedCourseId === instance.id ? "600" : "400",
+                                color: selectedCourseId === instance.id ? "#FFFFFF" : "#374151",
+                              }}
+                            >
+                              {instance.courseName}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                    {!selectedCourseId && (
+                      <Text style={{ fontSize: 12, color: "#EF4444", marginTop: 4 }}>
+                        Please select a course
                       </Text>
-                    </View>
-                  </VStack>
+                    )}
+                  </View>
                 )}
 
                 {/* Date and Time */}
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                     Date *
                   </Text>
                   <TextInput
@@ -578,11 +652,11 @@ export default function AdminEventsScreen() {
                     onChangeText={setStartDate}
                     placeholderTextColor="#9CA3AF"
                   />
-                </VStack>
+                </View>
 
-                <HStack space="sm">
-                  <VStack space="xs" className="flex-1">
-                    <Text className="text-sm font-semibold text-gray-700">
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1, gap: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                       Start Time *
                     </Text>
                     <TextInput
@@ -592,10 +666,10 @@ export default function AdminEventsScreen() {
                       onChangeText={setStartTime}
                       placeholderTextColor="#9CA3AF"
                     />
-                  </VStack>
+                  </View>
 
-                  <VStack space="xs" className="flex-1">
-                    <Text className="text-sm font-semibold text-gray-700">
+                  <View style={{ flex: 1, gap: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                       End Time *
                     </Text>
                     <TextInput
@@ -605,8 +679,8 @@ export default function AdminEventsScreen() {
                       onChangeText={setEndTime}
                       placeholderTextColor="#9CA3AF"
                     />
-                  </VStack>
-                </HStack>
+                  </View>
+                </View>
 
                 {/* Recurring */}
                 <TouchableOpacity
@@ -621,23 +695,23 @@ export default function AdminEventsScreen() {
                   >
                     {isRecurring && <View style={styles.checkboxInner} />}
                   </View>
-                  <VStack space="xs" className="flex-1">
-                    <Text className="text-sm font-semibold text-black">
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#000000" }}>
                       Recurring Event
                     </Text>
-                    <Text className="text-xs text-gray-600">
+                    <Text style={{ fontSize: 12, color: "#4B5563" }}>
                       Repeat this event on a schedule
                     </Text>
-                  </VStack>
+                  </View>
                 </TouchableOpacity>
 
                 {isRecurring && (
                   <>
-                    <VStack space="xs">
-                      <Text className="text-sm font-semibold text-gray-700">
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                         Frequency
                       </Text>
-                      <HStack space="sm">
+                      <View style={{ flexDirection: "row", gap: 8 }}>
                         {["daily", "weekly"].map((freq) => (
                           <TouchableOpacity
                             key={freq}
@@ -651,25 +725,25 @@ export default function AdminEventsScreen() {
                             ]}
                           >
                             <Text
-                              className={
-                                recurringFrequency === freq
-                                  ? "text-white text-sm font-semibold"
-                                  : "text-gray-700 text-sm"
-                              }
+                              style={{
+                                fontSize: 14,
+                                fontWeight: recurringFrequency === freq ? "600" : "400",
+                                color: recurringFrequency === freq ? "#FFFFFF" : "#374151",
+                              }}
                             >
                               {freq.charAt(0).toUpperCase() + freq.slice(1)}
                             </Text>
                           </TouchableOpacity>
                         ))}
-                      </HStack>
-                    </VStack>
+                      </View>
+                    </View>
 
                     {recurringFrequency === "weekly" && (
-                      <VStack space="xs">
-                        <Text className="text-sm font-semibold text-gray-700">
+                      <View style={{ gap: 8 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                           Repeat on Days
                         </Text>
-                        <HStack space="xs" className="flex-wrap">
+                        <View style={{ flexDirection: "row", gap: 4, flexWrap: "wrap" }}>
                           {weekDays.map((day) => (
                             <TouchableOpacity
                               key={day}
@@ -681,22 +755,22 @@ export default function AdminEventsScreen() {
                               ]}
                             >
                               <Text
-                                className={
-                                  selectedDays.includes(day)
-                                    ? "text-white text-xs font-bold"
-                                    : "text-gray-700 text-xs"
-                                }
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: selectedDays.includes(day) ? "700" : "400",
+                                  color: selectedDays.includes(day) ? "#FFFFFF" : "#374151",
+                                }}
                               >
                                 {day}
                               </Text>
                             </TouchableOpacity>
                           ))}
-                        </HStack>
-                      </VStack>
+                        </View>
+                      </View>
                     )}
 
-                    <VStack space="xs">
-                      <Text className="text-sm font-semibold text-gray-700">
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>
                         Repeat Until (Optional)
                       </Text>
                       <TextInput
@@ -706,7 +780,7 @@ export default function AdminEventsScreen() {
                         onChangeText={setRecurringUntil}
                         placeholderTextColor="#9CA3AF"
                       />
-                    </VStack>
+                    </View>
                   </>
                 )}
 
@@ -726,14 +800,14 @@ export default function AdminEventsScreen() {
                         <View style={styles.checkboxInner} />
                       )}
                     </View>
-                    <Text className="text-sm font-semibold text-black">
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#000000" }}>
                       Enable Attendance
                     </Text>
                   </TouchableOpacity>
                 )}
 
                 {/* Buttons */}
-                <HStack space="sm" className="mt-4">
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
                   <TouchableOpacity
                     onPress={() => {
                       resetForm();
@@ -742,7 +816,7 @@ export default function AdminEventsScreen() {
                     style={[styles.button, styles.buttonSecondary]}
                     disabled={creating}
                   >
-                    <Text className="text-black font-semibold">Cancel</Text>
+                    <Text style={{ fontWeight: "600" }}>Cancel</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -753,11 +827,11 @@ export default function AdminEventsScreen() {
                     {creating ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text className="text-white font-semibold">Create</Text>
+                      <Text style={{ color: "#FFFFFF", fontWeight: "600" }}>Create</Text>
                     )}
                   </TouchableOpacity>
-                </HStack>
-              </VStack>
+                </View>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -861,6 +935,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
+    zIndex: 1000,
+    elevation: 1000,
   },
   modal: {
     backgroundColor: "#FFFFFF",
@@ -876,9 +952,10 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     borderRadius: 12,
     padding: 12,
-    fontSize: 16,
-    color: "#000000",
+    minHeight: 48,
     backgroundColor: "#F9FAFB",
+    flexDirection: "row",
+    alignItems: "center",
   },
   pickerContainer: {
     borderWidth: 1,
