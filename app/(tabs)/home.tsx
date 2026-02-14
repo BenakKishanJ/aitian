@@ -426,6 +426,31 @@ export default function HomeScreen() {
           {renderStats()}
         </View>
 
+        {/* Parent Link Prompt */}
+        {role === "parent" && stats.childAttendance === undefined && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={[styles.alertCard, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}
+              onPress={() => router.push("/(auth)/parent-link")}
+            >
+              <HStack space="md" className="items-center">
+                <View style={[styles.alertIcon, { backgroundColor: "#DBEAFE" }]}>
+                  <Users size={24} color="#3B82F6" strokeWidth={2} />
+                </View>
+                <VStack space="xs" style={{ flex: 1 }}>
+                  <Text style={[styles.alertTitle, { color: "#1E40AF" }]}>
+                    Link to Your Child
+                  </Text>
+                  <Text style={[styles.alertText, { color: "#3B82F6" }]}>
+                    Link to your child's account to view their academic progress, attendance, and schedule.
+                  </Text>
+                </VStack>
+                <Text style={[styles.alertArrow, { color: "#93C5FD" }]}>›</Text>
+              </HStack>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Attendance Alert (Students & Parents) */}
         {attendanceAlert && (role === "student" || role === "parent") && (
           <View style={styles.section}>

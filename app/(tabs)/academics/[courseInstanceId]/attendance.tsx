@@ -33,9 +33,15 @@ export default function AttendanceScreen() {
   const isTeacherOrAdmin = role === "teacher" || role === "admin";
   
   // For parents, get the linked student's ID
-  const targetStudentId = role === 'parent' && userData
-    ? (userData as ParentUserData).linkedStudentId 
-    : undefined;
+  const getParentStudentId = () => {
+    if (role !== 'parent' || !userData) return undefined;
+    const parentData = userData as ParentUserData;
+    // Support both array and single field for backward compatibility
+    const linkedStudentIds = parentData.linkedStudentIds || [];
+    return linkedStudentIds.length > 0 ? linkedStudentIds[0] : parentData.linkedStudentId;
+  };
+  
+  const targetStudentId = getParentStudentId();
   
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showStartModal, setShowStartModal] = useState(false);

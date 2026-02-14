@@ -52,7 +52,11 @@ export interface TeacherUserData extends BaseUserData {
  */
 export interface ParentUserData extends BaseUserData {
   role: 'parent';
+  /** @deprecated Use linkedStudentIds array instead */
   linkedStudentId?: string;
+  linkedStudentIds?: string[];
+  pendingStudentIds?: string[];
+  maxStudents?: number;
 }
 
 /**

@@ -422,14 +422,34 @@ export function useHomeData() {
   };
 
   const fetchParentData = async () => {
-    if (!user || !userData) return;
+    if (!user || !userData) {
+      setData((prev) => ({ ...prev, loading: false }));
+      return;
+    }
     
-    // Cast to ParentUserData to access linkedStudentId
+    // Cast to ParentUserData to access linked student info
     const parentData = userData as import('@/types').ParentUserData;
-    if (!parentData.linkedStudentId) return;
+    
+    // Get the first linked student ID (support both array and single field for backward compatibility)
+    const linkedStudentIds = parentData.linkedStudentIds || [];
+    const studentId = linkedStudentIds.length > 0 ? linkedStudentIds[0] : parentData.linkedStudentId;
+    
+    if (!studentId) {
+      // No linked student - show empty state with loading complete
+      const recentAnnouncements = await fetchAnnouncements();
+      setData({
+        stats: {},
+        todayClasses: [],
+        upcomingAssignments: [],
+        recentAnnouncements,
+        attendanceAlert: false,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
 
     try {
-      const studentId = parentData.linkedStudentId;
       const stats: HomeStats = {};
 
       // Get child's attendance

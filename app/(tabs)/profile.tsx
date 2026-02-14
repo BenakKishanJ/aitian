@@ -19,6 +19,7 @@ import {
   Save,
   X,
   UserCircle,
+  UserCheck,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import {
@@ -28,6 +29,8 @@ import {
   getDocs,
   doc,
   updateDoc,
+  deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -79,21 +82,11 @@ export default function ProfileScreen() {
   const [linkedUsers, setLinkedUsers] = useState<LinkedUser[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
 
-  useEffect(() => {
-    if (userData?.name) {
-      setEditedName(userData.name);
-    }
-  }, [userData?.name]);
+  // Pending requests (for students - parent link requests)
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
 
-  useEffect(() => {
-    if (
-      userData &&
-      (userData.role === "parent" || userData.role === "student")
-    ) {
-      fetchLinkedUsers();
-    }
-  }, [userData]);
-
+  // Fetch linked users (parents or students)
   const fetchLinkedUsers = async () => {
     if (!userData) return;
 
@@ -161,6 +154,107 @@ export default function ProfileScreen() {
       setLoadingLinks(false);
     }
   };
+
+  // Fetch pending parent link requests for students
+  const fetchPendingRequests = async () => {
+    if (!userData || userData.role !== "student") return;
+
+    setLoadingPending(true);
+    try {
+      const linksRef = collection(db, "parentLinks");
+      const q = query(
+        linksRef,
+        where("studentId", "==", userData.uid),
+        where("status", "==", "pending"),
+      );
+
+      const snapshot = await getDocs(q);
+      const requests: any[] = [];
+
+      snapshot.forEach((doc) => {
+        requests.push({
+          id: doc.id,
+          ...doc.data(),
+        });
+      });
+
+      setPendingRequests(requests);
+    } catch (error) {
+      console.error("Error fetching pending requests:", error);
+    } finally {
+      setLoadingPending(false);
+    }
+  };
+
+  // Handle accepting a parent link request
+  const handleAcceptRequest = async (requestId: string, parentName: string) => {
+    try {
+      const linkRef = doc(db, "parentLinks", requestId);
+      await updateDoc(linkRef, {
+        status: "approved",
+        approvedAt: serverTimestamp(),
+      });
+
+      // Remove from pending and refresh linked users
+      setPendingRequests((prev) => prev.filter((req) => req.id !== requestId));
+      await fetchLinkedUsers();
+
+      Alert.alert("Success", `You are now linked with ${parentName}`);
+    } catch (error) {
+      console.error("Error accepting request:", error);
+      Alert.alert("Error", "Failed to accept request. Please try again.");
+    }
+  };
+
+  // Handle rejecting a parent link request
+  const handleRejectRequest = async (requestId: string) => {
+    Alert.alert(
+      "Reject Request",
+      "Are you sure you want to reject this parent link request?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const linkRef = doc(db, "parentLinks", requestId);
+              await deleteDoc(linkRef);
+
+              // Remove from pending
+              setPendingRequests((prev) =>
+                prev.filter((req) => req.id !== requestId),
+              );
+
+              Alert.alert("Success", "Request rejected");
+            } catch (error) {
+              console.error("Error rejecting request:", error);
+              Alert.alert("Error", "Failed to reject request. Please try again.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Effects
+  useEffect(() => {
+    if (userData?.name) {
+      setEditedName(userData.name);
+    }
+  }, [userData?.name]);
+
+  useEffect(() => {
+    if (
+      userData &&
+      (userData.role === "parent" || userData.role === "student")
+    ) {
+      fetchLinkedUsers();
+    }
+    if (userData?.role === "student") {
+      fetchPendingRequests();
+    }
+  }, [userData]);
 
   const handleSaveProfile = async () => {
     if (!editedName.trim()) {
@@ -517,15 +611,116 @@ export default function ProfileScreen() {
             </>
           )}
 
+          {/* Pending Parent Requests Section - For Students */}
+          {userData.role === "student" && (
+            <>
+              <VStack space="md">
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Pending Parent Requests
+                </Text>
+
+                {loadingPending ? (
+                  <Text className="text-gray-500 text-sm">Loading...</Text>
+                ) : pendingRequests.length > 0 ? (
+                  <VStack space="sm">
+                    {pendingRequests.map((request) => (
+                      <View
+                        key={request.id}
+                        className="bg-amber-50 border border-amber-200 rounded-lg p-4"
+                      >
+                        <HStack className="items-start mb-3" space="sm">
+                          <Avatar size="sm" className="bg-amber-200">
+                            <AvatarFallbackText className="text-amber-700">
+                              {getInitials(request.parentName)}
+                            </AvatarFallbackText>
+                          </Avatar>
+                          <VStack className="flex-1">
+                            <Text className="text-base text-black font-medium">
+                              {request.parentName}
+                            </Text>
+                            <Text className="text-xs text-gray-600">
+                              {request.parentEmail}
+                            </Text>
+                          </VStack>
+                          <View className="bg-amber-100 px-2 py-1 rounded">
+                            <Text className="text-amber-800 text-xs font-semibold">
+                              Pending
+                            </Text>
+                          </View>
+                        </HStack>
+
+                        <Text className="text-sm text-gray-600 mb-3">
+                          wants to link with your account to view your academic
+                          progress.
+                        </Text>
+
+                        <HStack space="sm">
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleRejectRequest(request.id)
+                            }
+                            className="flex-1 bg-gray-100 py-2 px-4 rounded-lg items-center"
+                          >
+                            <Text className="text-gray-700 font-semibold text-sm">
+                              Decline
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleAcceptRequest(
+                                request.id,
+                                request.parentName,
+                              )
+                            }
+                            className="flex-1 bg-blue-600 py-2 px-4 rounded-lg items-center"
+                          >
+                            <Text className="text-white font-semibold text-sm">
+                              Accept
+                            </Text>
+                          </TouchableOpacity>
+                        </HStack>
+                      </View>
+                    ))}
+                  </VStack>
+                ) : (
+                  <View className="border border-dashed border-gray-300 rounded-lg p-6 items-center">
+                    <Icon
+                      as={UserCheck}
+                      size="lg"
+                      className="text-gray-300 mb-2"
+                    />
+                    <Text className="text-gray-500 text-sm text-center">
+                      No pending parent requests
+                    </Text>
+                  </View>
+                )}
+              </VStack>
+
+              <Divider className="bg-gray-200" />
+            </>
+          )}
+
           {/* Linked Users Section */}
           {(userData.role === "parent" || userData.role === "student") && (
             <>
               <VStack space="md">
-                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {userData.role === "parent"
-                    ? "Linked Students"
-                    : "Linked Parents"}
-                </Text>
+                <HStack className="justify-between items-center">
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    {userData.role === "parent"
+                      ? "Linked Students"
+                      : "Linked Parents"}
+                  </Text>
+                  {userData.role === "parent" && (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(auth)/parent-link")}
+                      className="bg-blue-100 px-3 py-1 rounded-full"
+                    >
+                      <Text className="text-blue-700 text-xs font-semibold">
+                        + Link Student
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </HStack>
 
                 {loadingLinks ? (
                   <Text className="text-gray-500 text-sm">Loading...</Text>

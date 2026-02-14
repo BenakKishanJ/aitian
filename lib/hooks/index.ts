@@ -18,3 +18,4 @@ export { useHomeData } from './useHomeData';
 export { useAdminData } from './useAdminData';
 export { useAdminUsers } from './useAdminUsers';
 export { useFileUpload } from './useFileUpload';
+export { useLinkedStudents } from './useLinkedStudents';

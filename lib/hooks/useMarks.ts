@@ -41,10 +41,16 @@ export function useMarks(courseInstanceId: string) {
       let targetStudentId = user.uid;
       if (role === 'parent' && userData) {
         const parentData = userData as ParentUserData;
-        if (parentData.linkedStudentId) {
+        // Check for linkedStudentIds array first (new schema), then fall back to linkedStudentId (old schema)
+        const linkedStudentIds = parentData.linkedStudentIds || [];
+        if (linkedStudentIds.length > 0) {
+          targetStudentId = linkedStudentIds[0]; // Use first linked student
+        } else if (parentData.linkedStudentId) {
           targetStudentId = parentData.linkedStudentId;
         } else {
           setMarks(null);
+          setAllMarks([]);
+          setClassStats(null);
           setLoading(false);
           return;
         }

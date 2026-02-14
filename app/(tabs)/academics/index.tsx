@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -14,9 +14,11 @@ import { Search, Plus, X, Layers } from 'lucide-react-native';
 import { useAuth } from '@/lib/AuthContext';
 import { useStudentCourses } from '@/lib/hooks/useStudentCourses';
 import { useCoursesWithEnrollments } from '@/lib/hooks/useCoursesWithEnrollments';
+import { useLinkedStudents } from '@/lib/hooks/useLinkedStudents';
 import { CourseCard } from '@/components/academics/CourseCard';
 import { SemesterGroup } from '@/components/academics/SemesterGroup';
 import { ElectiveSelectorModal } from '@/components/academics/ElectiveSelectorModal';
+import { StudentSelector } from '@/components/parent/StudentSelector';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
@@ -68,13 +70,93 @@ export default function AcademicsScreen() {
     searchQuery: searchQuery,
   });
 
+  // For parents - fetch linked students and their courses
+  const {
+    students: linkedStudents,
+    loading: linkedStudentsLoading,
+    selectedStudent,
+    setSelectedStudent,
+    refresh: refreshLinkedStudents,
+  } = useLinkedStudents();
+
+  // State for parent-viewed courses
+  const [parentCourses, setParentCourses] = useState<StudentCourseView[]>([]);
+  const [parentCoursesLoading, setParentCoursesLoading] = useState(false);
+
+  // Fetch courses for selected student (for parent role)
+  useEffect(() => {
+    if (role !== 'parent' || !selectedStudent) {
+      setParentCourses([]);
+      return;
+    }
+
+    const fetchParentStudentCourses = async () => {
+      setParentCoursesLoading(true);
+      try {
+        // Fetch course instances for the selected student
+        const instancesRef = collection(db, COLLECTIONS.COURSE_INSTANCES);
+        const instancesQuery = query(
+          instancesRef,
+          where('departmentId', '==', selectedStudent.departmentId.toLowerCase()),
+          where('semester', '==', selectedStudent.semester),
+          where('section', '==', selectedStudent.section.toUpperCase()),
+          where('isActive', '==', true)
+        );
+
+        const instancesSnap = await getDocs(instancesQuery);
+        const courseViews: StudentCourseView[] = [];
+
+        for (const instanceDoc of instancesSnap.docs) {
+          const instanceData = instanceDoc.data() as CourseInstanceWithDetails;
+          instanceData.id = instanceDoc.id;
+
+          // Fetch course details
+          if (instanceData.courseId) {
+            const courseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, instanceData.courseId));
+            if (courseDoc.exists()) {
+              instanceData.course = { id: courseDoc.id, ...courseDoc.data() } as Course;
+            }
+          }
+
+          // Fetch teacher names
+          if (instanceData.teacherIds && instanceData.teacherIds.length > 0) {
+            const teacherDocs = await Promise.all(
+              instanceData.teacherIds.map(teacherId => 
+                getDoc(doc(db, COLLECTIONS.USERS, teacherId))
+              )
+            );
+            instanceData.teacherNames = teacherDocs
+              .filter(doc => doc.exists())
+              .map(doc => doc.data().name || 'Unknown');
+          }
+
+          courseViews.push({
+            instance: instanceData,
+            isElectiveSlot: instanceData.course?.courseType?.includes('elective') || false,
+            selectionStatus: 'not_applicable' as const,
+          });
+        }
+
+        setParentCourses(courseViews);
+      } catch (err) {
+        console.error('Error fetching parent student courses:', err);
+      } finally {
+        setParentCoursesLoading(false);
+      }
+    };
+
+    fetchParentStudentCourses();
+  }, [role, selectedStudent]);
+
   // Determine which data to use based on role
   const isStudent = role === 'student';
   const isTeacher = role === 'teacher';
+  const isParent = role === 'parent';
   
   // For students, use the new hook with dynamic course fetching
   // For teachers, use the existing hook
-  // For admin/parent, we need to handle separately or use a different approach
+  // For parents, use the fetched courses for selected student
+  // For admin, we need to handle separately or use a different approach
   const courses = useMemo(() => {
     if (isStudent) {
       return studentCourses;
@@ -84,17 +166,18 @@ export default function AcademicsScreen() {
         isElectiveSlot: tc.course?.courseType?.includes('elective') || false,
         selectionStatus: 'not_applicable' as const,
       }));
+    } else if (isParent) {
+      return parentCourses;
     } else {
-      // For admin and parent roles, return empty array for now
-      // These roles should use different data fetching logic
+      // For admin, return empty array for now
       return [];
     }
-  }, [isStudent, isTeacher, studentCourses, teacherCourses]);
+  }, [isStudent, isTeacher, isParent, studentCourses, teacherCourses, parentCourses]);
   
   const enrollments = isStudent ? {} : teacherEnrollments;
-  const loading = isStudent ? studentLoading : teacherLoading;
+  const loading = isStudent ? studentLoading : isParent ? (parentCoursesLoading || linkedStudentsLoading) : teacherLoading;
   const error = isStudent ? studentError : teacherError;
-  const refresh = isStudent ? refreshStudent : refreshTeacher;
+  const refresh = isStudent ? refreshStudent : isParent ? refreshLinkedStudents : refreshTeacher;
 
   // Group courses by semester (high to low)
   const groupedCourses: GroupedCourses = useMemo(() => {
@@ -372,6 +455,16 @@ export default function AcademicsScreen() {
           </View>
         )}
       </View>
+
+      {/* Parent Student Selector */}
+      {isParent && (
+        <StudentSelector
+          students={linkedStudents}
+          selectedStudent={selectedStudent}
+          onSelectStudent={setSelectedStudent}
+          loading={linkedStudentsLoading}
+        />
+      )}
 
       {/* Content */}
       {loading ? (
