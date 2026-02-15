@@ -540,6 +540,7 @@ export default function NewsScreen() {
           className="absolute bottom-8 right-6 bg-black rounded-full w-14 h-14 items-center justify-center shadow-lg"
           style={{
             shadowColor: "#000",
+            bottom: 120,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.3,
             shadowRadius: 6,

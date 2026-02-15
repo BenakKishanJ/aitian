@@ -21,10 +21,7 @@ import {
   Calendar as CalendarIcon,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
-import {
-  useCalendarEvents,
-  EventType,
-} from "@/lib/hooks/useCalendarEvents";
+import { useCalendarEvents, EventType } from "@/lib/hooks/useCalendarEvents";
 import type { ExpandedEvent } from "@/types/calendar";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
@@ -98,11 +95,11 @@ export default function CalendarScreen() {
           const enrollmentsRef = collection(db, "enrollments");
           const enrollmentsQuery = query(
             enrollmentsRef,
-            where("studentId", "==", user.uid)
+            where("studentId", "==", user.uid),
           );
           const enrollmentsSnap = await getDocs(enrollmentsQuery);
           courseIds = enrollmentsSnap.docs.map(
-            (doc) => doc.data().courseInstanceId
+            (doc) => doc.data().courseInstanceId,
           );
         } else if (role === "teacher") {
           // Get courses taught by teacher
@@ -110,7 +107,7 @@ export default function CalendarScreen() {
           const q = query(
             coursesRef,
             where("teacherIds", "array-contains", user.uid),
-            where("isActive", "==", true)
+            where("isActive", "==", true),
           );
           const snapshot = await getDocs(q);
           courseIds = snapshot.docs.map((doc) => doc.id);
@@ -156,7 +153,8 @@ export default function CalendarScreen() {
     startDate: dateRange.start,
     endDate: dateRange.end,
     userId: user?.uid,
-    courseInstanceIds: role === 'student' || role === 'teacher' ? enrolledCourseIds : undefined,
+    courseInstanceIds:
+      role === "student" || role === "teacher" ? enrolledCourseIds : undefined,
     eventTypes: selectedFilters.length > 0 ? selectedFilters : undefined,
   });
 
@@ -266,7 +264,7 @@ export default function CalendarScreen() {
 
     try {
       // Check if user can edit this event
-      if (!canEditEvent(role || 'student', selectedEvent.createdBy, user.uid)) {
+      if (!canEditEvent(role || "student", selectedEvent.createdBy, user.uid)) {
         Alert.alert("Error", "You don't have permission to edit this event");
         return;
       }
@@ -319,15 +317,19 @@ export default function CalendarScreen() {
       // Sanitize to remove any undefined values before saving to Firebase
       const sanitizedEventDoc = undefinedToNull(eventDoc);
       await updateDoc(
-        doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id),
-        sanitizedEventDoc
+        doc(
+          db,
+          "calendarEvents",
+          selectedEvent.originalEventId || selectedEvent.id,
+        ),
+        sanitizedEventDoc,
       );
 
       setShowCreateModal(false);
       setShowEventDetail(false);
       setIsEditing(false);
       setSelectedEvent(null);
-      
+
       Alert.alert("Success", "Event updated successfully");
     } catch (error) {
       console.error("Error updating event:", error);
@@ -339,33 +341,29 @@ export default function CalendarScreen() {
     if (!user) return;
 
     // Check if user can delete this event
-    if (!canEditEvent(role || 'student', createdBy, user.uid)) {
+    if (!canEditEvent(role || "student", createdBy, user.uid)) {
       Alert.alert("Error", "You don't have permission to delete this event");
       return;
     }
 
-    Alert.alert(
-      "Delete Event",
-      "Are you sure you want to delete this event?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, "calendarEvents", eventId));
-              setShowEventDetail(false);
-              setSelectedEvent(null);
-              Alert.alert("Success", "Event deleted successfully");
-            } catch (error) {
-              console.error("Error deleting event:", error);
-              Alert.alert("Error", "Failed to delete event");
-            }
-          },
+    Alert.alert("Delete Event", "Are you sure you want to delete this event?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "calendarEvents", eventId));
+            setShowEventDetail(false);
+            setSelectedEvent(null);
+            Alert.alert("Success", "Event deleted successfully");
+          } catch (error) {
+            console.error("Error deleting event:", error);
+            Alert.alert("Error", "Failed to delete event");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleRefresh = async () => {
@@ -619,10 +617,10 @@ export default function CalendarScreen() {
                           selectedEvent?.type === "exam"
                             ? "#EF4444"
                             : selectedEvent?.type === "assignment"
-                            ? "#3B82F6"
-                            : selectedEvent?.type === "personal"
-                            ? "#10B981"
-                            : "#000000",
+                              ? "#3B82F6"
+                              : selectedEvent?.type === "personal"
+                                ? "#10B981"
+                                : "#000000",
                       },
                     ]}
                   />
@@ -656,7 +654,7 @@ export default function CalendarScreen() {
                   <CalendarIcon size={16} color="#6B7280" />
                   <Text style={styles.eventDetailLabel}>
                     {selectedEvent?.startTime && selectedEvent?.endTime
-                      ? `${selectedEvent.startTime.toDate().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${selectedEvent.endTime.toDate().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                      ? `${selectedEvent.startTime.toDate().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })} - ${selectedEvent.endTime.toDate().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`
                       : ""}
                   </Text>
                 </HStack>
@@ -689,31 +687,38 @@ export default function CalendarScreen() {
               </VStack>
             </ScrollView>
 
-            {selectedEvent && user && canEditEvent(role || 'student', selectedEvent.createdBy, user.uid) && (
-              <View style={styles.eventDetailFooter}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.editButton]}
-                  onPress={() => {
-                    setIsEditing(true);
-                    setShowEventDetail(false);
-                    setShowCreateModal(true);
-                  }}
-                >
-                  <Text style={styles.actionButtonText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() =>
-                    selectedEvent && handleDeleteEvent(
-                      selectedEvent.originalEventId || selectedEvent.id,
-                      selectedEvent.createdBy
-                    )
-                  }
-                >
-                  <Text style={styles.actionButtonText}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            {selectedEvent &&
+              user &&
+              canEditEvent(
+                role || "student",
+                selectedEvent.createdBy,
+                user.uid,
+              ) && (
+                <View style={styles.eventDetailFooter}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.editButton]}
+                    onPress={() => {
+                      setIsEditing(true);
+                      setShowEventDetail(false);
+                      setShowCreateModal(true);
+                    }}
+                  >
+                    <Text style={styles.actionButtonText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.deleteButton]}
+                    onPress={() =>
+                      selectedEvent &&
+                      handleDeleteEvent(
+                        selectedEvent.originalEventId || selectedEvent.id,
+                        selectedEvent.createdBy,
+                      )
+                    }
+                  >
+                    <Text style={styles.actionButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
           </View>
         </View>
       </Modal>
@@ -931,7 +936,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    bottom: 24,
+    bottom: 120,
     right: 24,
     width: 56,
     height: 56,
