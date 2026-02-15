@@ -3,8 +3,16 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { View } from "react-native";
 import { Home, CalendarDays, BookOpen, Bell, User } from "lucide-react-native";
 
-const CHARCOAL = "#1C1C1E"; // modern charcoal black
-const PASTEL_BLUE = "#BFDBFE"; // soft pastel blue
+/**
+ * Using NativeWind configured theme colors:
+ * black.DEFAULT = #232323
+ * cyan.DEFAULT = #BCF3FF
+ * gray.400 = #9EADA4
+ */
+
+const CHARCOAL = "#232323"; // black.DEFAULT
+const CYAN = "#BCF3FF"; // cyan.DEFAULT
+const INACTIVE = "#9EADA4"; // gray.400
 
 function TabIcon({ Icon, focused }: any) {
   return (
@@ -13,13 +21,13 @@ function TabIcon({ Icon, focused }: any) {
       style={{
         width: 50,
         height: 50,
-        backgroundColor: focused ? PASTEL_BLUE : "transparent",
+        backgroundColor: focused ? CYAN : "transparent",
       }}
     >
       <Icon
         size={22}
-        color={focused ? CHARCOAL : "#9CA3AF"} // charcoal when active, soft gray inactive
-        fill={focused ? CHARCOAL : "none"} // makes icon filled when focused
+        color={focused ? CHARCOAL : INACTIVE}
+        fill={focused ? CHARCOAL : "none"}
         strokeWidth={focused ? 0 : 2}
       />
     </View>
@@ -36,7 +44,6 @@ export default function TabsLayout() {
           tabBarStyle: {
             position: "absolute",
             bottom: 20,
-            alignContent: "center",
             alignSelf: "center",
             width: "90%",
             transform: [{ translateX: "5%" }],
@@ -96,3 +103,4 @@ export default function TabsLayout() {
     </ProtectedRoute>
   );
 }
+
