@@ -27,8 +27,7 @@ function TabIcon({ Icon, focused }: any) {
       <Icon
         size={22}
         color={focused ? CHARCOAL : INACTIVE}
-        fill={focused ? CHARCOAL : "none"}
-        strokeWidth={focused ? 0 : 2}
+        strokeWidth={2}
       />
     </View>
   );
