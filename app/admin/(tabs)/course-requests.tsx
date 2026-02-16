@@ -13,12 +13,10 @@ import { Text } from '@/components/ui/text';
 import { Heading } from '@/components/ui/heading';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Icon } from '@/components/ui/icon';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Modal, ModalBackdrop, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import { Input, InputField } from '@/components/ui/input';
-import { Pressable } from '@/components/ui/pressable';
 import { Alert, AlertIcon, AlertText } from '@/components/ui/alert';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -225,15 +223,13 @@ export default function CourseRequestsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 py-4">
+      <View className="px-6 pt-4 pb-4">
         <HStack className="justify-between items-center">
           <VStack space="xs">
-            <Heading size="lg" className="text-black">
-              Course Requests
-            </Heading>
-            <Text className="text-sm text-gray-600">
+            <Text className="text-white text-2xl font-bold">Course Requests</Text>
+            <Text className="text-[#C5D4CA] text-sm">
               {requests.length} pending request{requests.length !== 1 ? 's' : ''}
             </Text>
           </VStack>
@@ -242,87 +238,102 @@ export default function CourseRequestsScreen() {
 
       {/* Requests List */}
       <ScrollView
-        className="flex-1 px-4 pt-4"
+        className="flex-1 px-6"
+        contentContainerClassName="pb-8"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
+          />
         }
       >
         {error && (
-          <Alert action="error" className="mb-4">
-            <AlertIcon as={AlertCircle} />
-            <AlertText>{error}</AlertText>
-          </Alert>
+          <View className="bg-[#F96857]/10 border border-[#F96857]/30 rounded-2xl p-4 mb-4">
+            <HStack space="sm" className="items-center">
+              <Icon as={AlertCircle} size="sm" className="text-[#F96857]" />
+              <Text className="text-[#F96857] flex-1">{error}</Text>
+            </HStack>
+          </View>
         )}
 
         {loading ? (
           <View className="py-12 items-center">
-            <ActivityIndicator size="large" color="#7477FF" />
-            <Text className="mt-4 text-gray-500">Loading requests...</Text>
+            <ActivityIndicator size="large" color="#BCF3FF" />
+            <Text className="mt-4 text-[#C5D4CA]">Loading requests...</Text>
           </View>
         ) : requests.length === 0 ? (
-          <View className="py-12 items-center">
-            <CheckCircle size={64} color="#C5D4CA" />
-            <Text className="mt-4 text-gray-500 text-lg text-center">
-              No pending course requests
+          <View className="py-16 items-center">
+            <View className="w-20 h-20 rounded-full bg-[#2A2A2D] items-center justify-center mb-4">
+              <Icon as={CheckCircle} size="xl" className="text-[#3C443F]" />
+            </View>
+            <Text className="text-white text-lg font-semibold mb-2">
+              No pending requests
             </Text>
-            <Text className="text-gray-400 text-sm text-center mt-2">
+            <Text className="text-[#6B7280] text-sm text-center">
               All course requests have been reviewed
             </Text>
           </View>
         ) : (
-          <VStack space="md" className="pb-8">
+          <VStack space="md">
             {requests.map((request) => (
-              <Card key={request.id} variant="outline" className="p-4">
+              <View
+                key={request.id}
+                className="bg-[#2A2A2D] rounded-2xl p-5"
+              >
                 <VStack space="md">
                   {/* Header */}
                   <HStack className="justify-between items-start">
                     <VStack className="flex-1" space="xs">
                       <HStack space="sm" className="items-center">
-                        <BookOpen size={18} color="#7477FF" />
-                        <Text className="font-semibold text-black flex-1" numberOfLines={2}>
+                        <View className="w-10 h-10 rounded-xl bg-[#7477FF]/15 items-center justify-center">
+                          <Icon as={BookOpen} size="sm" className="text-[#7477FF]" />
+                        </View>
+                        <Text className="text-white font-semibold flex-1" numberOfLines={2}>
                           {request.courseName}
                         </Text>
                       </HStack>
-                      <Text className="text-sm text-gray-500">
+                      <Text className="text-sm text-[#6B7280] ml-12">
                         {getDepartmentNameById(request.departmentId)}
                       </Text>
                     </VStack>
-                    <Badge variant="outline" className="bg-yellow-50 border-yellow-300">
-                      <Text className="text-xs text-yellow-700">Pending</Text>
-                    </Badge>
+                    <View className="bg-[#F9CD61]/15 px-3 py-1 rounded-full">
+                      <Text className="text-xs text-[#F9CD61] font-semibold">Pending</Text>
+                    </View>
                   </HStack>
 
                   {/* Details */}
-                  <HStack space="md" className="flex-wrap">
-                    <View className="bg-gray-100 px-3 py-1 rounded-full">
-                      <Text className="text-sm text-gray-700">
+                  <HStack space="sm" className="flex-wrap ml-12">
+                    <View className="bg-[#1C1C1E] px-3 py-1.5 rounded-lg">
+                      <Text className="text-sm text-[#C5D4CA]">
                         Semester {request.semester}
                       </Text>
                     </View>
-                    <View className="bg-gray-100 px-3 py-1 rounded-full">
-                      <Text className="text-sm text-gray-700">
+                    <View className="bg-[#1C1C1E] px-3 py-1.5 rounded-lg">
+                      <Text className="text-sm text-[#C5D4CA]">
                         Section {request.section}
                       </Text>
                     </View>
                   </HStack>
 
                   {/* Teacher Info */}
-                  <HStack space="sm" className="items-center">
-                    <User size={16} color="#77867D" />
-                    <Text className="text-sm text-gray-600">
+                  <HStack space="sm" className="items-center ml-12">
+                    <Icon as={User} size="sm" className="text-[#6B7280]" />
+                    <Text className="text-sm text-[#C5D4CA]">
                       {request.teacherName}
                     </Text>
                     {request.teacherEmail && (
-                      <Text className="text-sm text-gray-400">
+                      <Text className="text-sm text-[#6B7280]">
                         ({request.teacherEmail})
                       </Text>
                     )}
                   </HStack>
 
                   {/* Requested Date */}
-                  <HStack space="sm" className="items-center">
-                    <Clock size={14} color="#C5D4CA" />
-                    <Text className="text-xs text-gray-400">
+                  <HStack space="sm" className="items-center ml-12">
+                    <Icon as={Clock} size="xs" className="text-[#6B7280]" />
+                    <Text className="text-xs text-[#6B7280]">
                       Requested on {formatDate(request.requestedAt)}
                     </Text>
                   </HStack>
@@ -331,25 +342,25 @@ export default function CourseRequestsScreen() {
                   <HStack space="md" className="pt-2">
                     <Button
                       variant="outline"
-                      className="flex-1 border-red-300"
+                      className="flex-1 border-[#F96857]/50 bg-transparent"
                       onPress={() => {
                         setSelectedRequest(request);
                         setIsRejectModalOpen(true);
                       }}
                       disabled={processing}
                     >
-                      <ButtonText className="text-red-600">Reject</ButtonText>
+                      <ButtonText className="text-[#F96857]">Reject</ButtonText>
                     </Button>
                     <Button
-                      className="flex-1 bg-purple-500"
+                      className="flex-1 bg-[#BCF3FF]"
                       onPress={() => handleApprove(request)}
                       disabled={processing}
                     >
-                      <ButtonText className="text-white">Approve</ButtonText>
+                      <ButtonText className="text-[#232323]">Approve</ButtonText>
                     </Button>
                   </HStack>
                 </VStack>
-              </Card>
+              </View>
             ))}
           </VStack>
         )}
@@ -358,27 +369,29 @@ export default function CourseRequestsScreen() {
       {/* Reject Modal */}
       <Modal isOpen={isRejectModalOpen} onClose={() => setIsRejectModalOpen(false)} size="md">
         <ModalBackdrop />
-        <ModalContent>
+        <ModalContent className="bg-[#2A2A2D]">
           <ModalHeader>
-            <Heading size="md" className="text-black">
+            <Heading size="md" className="text-white">
               Reject Course Request
             </Heading>
           </ModalHeader>
           <ModalBody>
-            <Text className="text-gray-600 mb-4">
+            <Text className="text-[#C5D4CA] mb-4">
               Are you sure you want to reject the course request for "{selectedRequest?.courseName}"?
             </Text>
             <VStack space="xs">
-              <Text className="text-sm font-medium text-gray-700">
+              <Text className="text-sm font-medium text-[#C5D4CA]">
                 Reason (optional)
               </Text>
-              <Input>
+              <Input className="bg-[#1C1C1E] border-[#3C443F] rounded-xl">
                 <InputField
                   placeholder="Enter reason for rejection..."
                   value={rejectionReason}
                   onChangeText={setRejectionReason}
                   multiline
                   numberOfLines={3}
+                  className="text-white"
+                  placeholderTextColor="#6B7280"
                 />
               </Input>
             </VStack>
@@ -387,14 +400,14 @@ export default function CourseRequestsScreen() {
             <HStack space="md" className="w-full">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="flex-1 border-[#3C443F]"
                 onPress={() => setIsRejectModalOpen(false)}
                 disabled={processing}
               >
-                <ButtonText>Cancel</ButtonText>
+                <ButtonText className="text-[#C5D4CA]">Cancel</ButtonText>
               </Button>
               <Button
-                className="flex-1 bg-red-500"
+                className="flex-1 bg-[#F96857]"
                 onPress={handleReject}
                 disabled={processing}
               >

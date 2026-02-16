@@ -1,12 +1,12 @@
 import React from 'react';
 import {
   View,
-  StyleSheet,
   TouchableOpacity,
 } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
+import { Icon } from '@/components/ui/icon';
 import {
   User,
   GraduationCap,
@@ -15,8 +15,6 @@ import {
   MoreVertical,
   Mail,
   Building2,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react-native';
 import type { UserData } from '@/types';
 
@@ -29,6 +27,33 @@ interface UserListItemProps {
   showActions?: boolean;
 }
 
+const roleConfig: Record<string, { color: string; bgColor: string; icon: any; label: string }> = {
+  student: {
+    color: '#BCF3FF',
+    bgColor: 'rgba(188, 243, 255, 0.15)',
+    icon: GraduationCap,
+    label: 'Student',
+  },
+  teacher: {
+    color: '#F96857',
+    bgColor: 'rgba(249, 104, 87, 0.15)',
+    icon: User,
+    label: 'Teacher',
+  },
+  parent: {
+    color: '#F9CD61',
+    bgColor: 'rgba(249, 205, 97, 0.15)',
+    icon: Users,
+    label: 'Parent',
+  },
+  admin: {
+    color: '#7477FF',
+    bgColor: 'rgba(116, 119, 255, 0.15)',
+    icon: Shield,
+    label: 'Admin',
+  },
+};
+
 export function UserListItem({
   user,
   onPress,
@@ -37,35 +62,7 @@ export function UserListItem({
   onToggleStatus,
   showActions = true,
 }: UserListItemProps) {
-  const getRoleIcon = () => {
-    switch (user.role) {
-      case 'teacher':
-        return <GraduationCap size={18} color="#FFFFFF" />;
-      case 'admin':
-        return <Shield size={18} color="#FFFFFF" />;
-      case 'parent':
-        return <Users size={18} color="#FFFFFF" />;
-      default:
-        return <User size={18} color="#FFFFFF" />;
-    }
-  };
-
-  const getRoleColor = () => {
-    switch (user.role) {
-      case 'teacher':
-        return '#3B82F6';
-      case 'admin':
-        return '#8B5CF6';
-      case 'parent':
-        return '#10B981';
-      default:
-        return '#6B7280';
-    }
-  };
-
-  const getRoleLabel = () => {
-    return user.role.charAt(0).toUpperCase() + user.role.slice(1);
-  };
+  const config = roleConfig[user.role] || roleConfig.student;
 
   const getDepartmentLabel = () => {
     if (user.role === 'student' && (user as any).departmentId) {
@@ -79,47 +76,66 @@ export function UserListItem({
 
   return (
     <TouchableOpacity
-      style={[styles.container, !user.isActive && styles.containerInactive]}
+      className={`flex-row items-center bg-[#2A2A2D] rounded-2xl p-4 mb-3 ${
+        !user.isActive ? 'opacity-60' : ''
+      }`}
       onPress={onPress}
       activeOpacity={0.7}
     >
       {/* Avatar */}
-      <View style={[styles.avatar, { backgroundColor: getRoleColor() }]}>
-        {getRoleIcon()}
+      <View
+        className="w-12 h-12 rounded-full items-center justify-center mr-4"
+        style={{ backgroundColor: config.bgColor }}
+      >
+        <Icon as={config.icon} size="md" style={{ color: config.color }} />
       </View>
 
       {/* User Info */}
-      <VStack space="xs" style={styles.userInfo}>
-        <HStack space="sm" style={styles.nameRow}>
-          <Text style={styles.name}>{user.name}</Text>
+      <VStack space="xs" className="flex-1">
+        <HStack space="sm" className="items-center">
+          <Text className="text-white text-base font-semibold flex-1" numberOfLines={1}>
+            {user.name}
+          </Text>
           {!user.isActive && (
-            <View style={styles.inactiveBadge}>
-              <Text style={styles.inactiveText}>Inactive</Text>
+            <View className="bg-[#F96857]/20 px-2 py-0.5 rounded">
+              <Text className="text-[#F96857] text-xs font-semibold">Inactive</Text>
             </View>
           )}
         </HStack>
 
-        <HStack space="sm" style={styles.emailRow}>
-          <Mail size={12} color="#9CA3AF" />
-          <Text style={styles.email}>{user.email}</Text>
+        <HStack space="xs" className="items-center">
+          <Icon as={Mail} size="2xs" className="text-[#6B7280]" />
+          <Text className="text-[#9CA3AF] text-xs" numberOfLines={1}>
+            {user.email}
+          </Text>
         </HStack>
 
-        <HStack space="md" style={styles.metaRow}>
-          <View style={[styles.roleBadge, { backgroundColor: `${getRoleColor()}20` }]}>
-            <Text style={[styles.roleText, { color: getRoleColor() }]}>
-              {getRoleLabel()}
+        <HStack space="sm" className="items-center flex-wrap">
+          <View
+            className="px-2.5 py-1 rounded-lg"
+            style={{ backgroundColor: config.bgColor }}
+          >
+            <Text
+              className="text-xs font-semibold"
+              style={{ color: config.color }}
+            >
+              {config.label}
             </Text>
           </View>
 
           {getDepartmentLabel() && (
-            <HStack space="xs" style={styles.departmentRow}>
-              <Building2 size={12} color="#6B7280" />
-              <Text style={styles.departmentText}>{getDepartmentLabel()}</Text>
+            <HStack space="xs" className="items-center">
+              <Icon as={Building2} size="2xs" className="text-[#6B7280]" />
+              <Text className="text-[#9CA3AF] text-xs">
+                {getDepartmentLabel()}
+              </Text>
             </HStack>
           )}
 
           {(user as any).semester && (
-            <Text style={styles.semesterText}>Sem {(user as any).semester}</Text>
+            <Text className="text-[#9CA3AF] text-xs">
+              Sem {(user as any).semester}
+            </Text>
           )}
         </HStack>
       </VStack>
@@ -127,101 +143,15 @@ export function UserListItem({
       {/* Actions */}
       {showActions && (
         <TouchableOpacity
-          style={styles.moreButton}
+          className="p-2 ml-2"
           onPress={(e) => {
             e.stopPropagation();
             // Action sheet would be shown here
           }}
         >
-          <MoreVertical size={20} color="#6B7280" />
+          <Icon as={MoreVertical} size="sm" className="text-[#6B7280]" />
         </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  containerInactive: {
-    opacity: 0.7,
-    backgroundColor: '#F9FAFB',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  nameRow: {
-    alignItems: 'center',
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  inactiveBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  inactiveText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#DC2626',
-  },
-  emailRow: {
-    alignItems: 'center',
-  },
-  email: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  metaRow: {
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  roleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  departmentRow: {
-    alignItems: 'center',
-  },
-  departmentText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  semesterText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  moreButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-});
