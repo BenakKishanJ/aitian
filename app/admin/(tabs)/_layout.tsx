@@ -1,65 +1,103 @@
 import { Tabs } from "expo-router";
 import AdminRoute from "@/components/AdminRoute";
+import { View } from "react-native";
 import { Home, CalendarDays, BookOpen, Bell, User, Users, ClipboardList } from "lucide-react-native";
+
+/**
+ * Using NativeWind configured theme colors:
+ * black.DEFAULT = #232323
+ * cyan.DEFAULT = #BCF3FF
+ * gray.400 = #9EADA4
+ */
+
+const CHARCOAL = "#232323"; // black.DEFAULT
+const CYAN = "#BCF3FF"; // cyan.DEFAULT
+const INACTIVE = "#9EADA4"; // gray.400
+
+function TabIcon({ Icon, focused }: any) {
+  return (
+    <View
+      className="items-center justify-center rounded-2xl"
+      style={{
+        width: 50,
+        height: 50,
+        backgroundColor: focused ? CYAN : "transparent",
+      }}
+    >
+      <Icon
+        size={22}
+        color={focused ? CHARCOAL : INACTIVE}
+        strokeWidth={2}
+      />
+    </View>
+  );
+}
 
 export default function AdminTabsLayout() {
   return (
     <AdminRoute>
-      <Tabs screenOptions={{ headerShown: false, tabBarShowLabel: false }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarStyle: {
+            position: "absolute",
+            bottom: 20,
+            alignSelf: "center",
+            width: "90%",
+            transform: [{ translateX: "5%" }],
+            height: 60,
+            backgroundColor: CHARCOAL,
+            borderRadius: 15,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            elevation: 15,
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 15,
+          },
+        }}
+      >
         <Tabs.Screen
           name="home"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <Home size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={Home} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="users"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <Users size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={Users} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="calendar"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <CalendarDays size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={CalendarDays} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="academics"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <BookOpen size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={BookOpen} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="course-requests"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <ClipboardList size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={ClipboardList} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="news"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <Bell size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={Bell} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
-            tabBarIcon: ({ focused, color, size }) => (
-              <User size={size} color={focused ? "#000000" : color} />
-            ),
+            tabBarIcon: ({ focused }) => <TabIcon Icon={User} focused={focused} />,
           }}
         />
       </Tabs>
