@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Animated,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -20,6 +22,11 @@ import {
   X,
   UserCircle,
   UserCheck,
+  ChevronRight,
+  Shield,
+  GraduationCap,
+  Heart,
+  UserIcon,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import {
@@ -34,7 +41,6 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-/* Gluestack UI Components */
 import { Text } from "@/components/ui/text";
 import { Button, ButtonText, ButtonIcon } from "@/components/ui/button";
 import { VStack } from "@/components/ui/vstack";
@@ -46,7 +52,6 @@ import {
 } from "@/components/ui/avatar";
 import { Icon } from "@/components/ui/icon";
 import { Input, InputField } from "@/components/ui/input";
-import { Divider } from "@/components/ui/divider";
 import {
   AlertDialog,
   AlertDialogBackdrop,
@@ -63,10 +68,66 @@ interface LinkedUser {
   email: string;
   usn?: string;
   departmentId?: string;
-  department?: string; // legacy support
+  department?: string;
   semester?: number;
   section?: string;
 }
+
+const profileImages: Record<string, { male: any; female: any }> = {
+  student: {
+    male: require("@/assets/images/profile/student_male.png"),
+    female: require("@/assets/images/profile/student_female.png"),
+  },
+  teacher: {
+    male: require("@/assets/images/profile/teacher_male.png"),
+    female: require("@/assets/images/profile/teacher_female.png"),
+  },
+  parent: {
+    male: require("@/assets/images/profile/parent_male.png"),
+    female: require("@/assets/images/profile/parent_female.png"),
+  },
+  admin: {
+    male: require("@/assets/images/profile/admin_male.png"),
+    female: require("@/assets/images/profile/admin_female.png"),
+  },
+};
+
+const roleConfig: Record<string, {
+  color: string;
+  accentColor: string;
+  icon: any;
+  label: string;
+  bgColor: string;
+}> = {
+  student: {
+    color: "#BCF3FF",
+    accentColor: "#BCF3FF",
+    icon: GraduationCap,
+    label: "Student",
+    bgColor: "#E5FBFF",
+  },
+  teacher: {
+    color: "#F96857",
+    accentColor: "#F96857",
+    icon: User,
+    label: "Teacher",
+    bgColor: "#FDE1DD",
+  },
+  parent: {
+    color: "#F9CD61",
+    accentColor: "#F9CD61",
+    icon: Heart,
+    label: "Parent",
+    bgColor: "#FDF3D1",
+  },
+  admin: {
+    color: "#7477FF",
+    accentColor: "#7477FF",
+    icon: Shield,
+    label: "Admin",
+    bgColor: "#E1E3FF",
+  },
+};
 
 export default function ProfileScreen() {
   const { userData, user, logout, loading: authLoading } = useAuth();
@@ -74,19 +135,48 @@ export default function ProfileScreen() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [editedGender, setEditedGender] = useState<"male" | "female">("male");
   const [saving, setSaving] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Linked users (for parents and students)
   const [linkedUsers, setLinkedUsers] = useState<LinkedUser[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
-
-  // Pending requests (for students - parent link requests)
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
 
-  // Fetch linked users (parents or students)
+  const scrollY = new Animated.Value(0);
+  const HEADER_MAX_HEIGHT = 280;
+  const HEADER_MIN_HEIGHT = 100;
+  const COLLAPSE_RANGE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    extrapolate: "clamp",
+  });
+
+  const imageScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [1, 0.6],
+    extrapolate: "clamp",
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE / 2, COLLAPSE_RANGE],
+    outputRange: [1, 0.5, 0],
+    extrapolate: "clamp",
+  });
+
+  const role = userData?.role || "student";
+  const gender = userData?.gender || "male";
+  const config = roleConfig[role] || roleConfig.student;
+  
+  const getProfileImage = () => {
+    const roleImages = profileImages[role] || profileImages.student;
+    return roleImages[gender] || roleImages.male;
+  };
+
   const fetchLinkedUsers = async () => {
     if (!userData) return;
 
@@ -96,18 +186,16 @@ export default function ProfileScreen() {
       let q;
 
       if (userData.role === "parent") {
-        // Fetch students linked to this parent
         q = query(
           linksRef,
           where("parentId", "==", userData.uid),
-          where("status", "==", "approved"),
+          where("status", "==", "approved")
         );
       } else if (userData.role === "student") {
-        // Fetch parents linked to this student
         q = query(
           linksRef,
           where("studentId", "==", userData.uid),
-          where("status", "==", "approved"),
+          where("status", "==", "approved")
         );
       } else {
         setLoadingLinks(false);
@@ -126,11 +214,10 @@ export default function ProfileScreen() {
         }
       });
 
-      // Fetch user details for each linked user
       const users: LinkedUser[] = [];
       for (const uid of userIds) {
         const userDoc = await getDocs(
-          query(collection(db, "users"), where("uid", "==", uid)),
+          query(collection(db, "users"), where("uid", "==", uid))
         );
         if (!userDoc.empty) {
           const userData = userDoc.docs[0].data();
@@ -155,7 +242,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // Fetch pending parent link requests for students
   const fetchPendingRequests = async () => {
     if (!userData || userData.role !== "student") return;
 
@@ -165,7 +251,7 @@ export default function ProfileScreen() {
       const q = query(
         linksRef,
         where("studentId", "==", userData.uid),
-        where("status", "==", "pending"),
+        where("status", "==", "pending")
       );
 
       const snapshot = await getDocs(q);
@@ -186,7 +272,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // Handle accepting a parent link request
   const handleAcceptRequest = async (requestId: string, parentName: string) => {
     try {
       const linkRef = doc(db, "parentLinks", requestId);
@@ -195,7 +280,6 @@ export default function ProfileScreen() {
         approvedAt: serverTimestamp(),
       });
 
-      // Remove from pending and refresh linked users
       setPendingRequests((prev) => prev.filter((req) => req.id !== requestId));
       await fetchLinkedUsers();
 
@@ -206,7 +290,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // Handle rejecting a parent link request
   const handleRejectRequest = async (requestId: string) => {
     Alert.alert(
       "Reject Request",
@@ -221,9 +304,8 @@ export default function ProfileScreen() {
               const linkRef = doc(db, "parentLinks", requestId);
               await deleteDoc(linkRef);
 
-              // Remove from pending
               setPendingRequests((prev) =>
-                prev.filter((req) => req.id !== requestId),
+                prev.filter((req) => req.id !== requestId)
               );
 
               Alert.alert("Success", "Request rejected");
@@ -233,16 +315,20 @@ export default function ProfileScreen() {
             }
           },
         },
-      ],
+      ]
     );
   };
 
-  // Effects
   useEffect(() => {
     if (userData?.name) {
       setEditedName(userData.name);
     }
-  }, [userData?.name]);
+    if (userData?.gender) {
+      setEditedGender(userData.gender);
+    } else {
+      setEditedGender("male");
+    }
+  }, [userData?.name, userData?.gender]);
 
   useEffect(() => {
     if (
@@ -269,6 +355,7 @@ export default function ProfileScreen() {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         name: editedName.trim(),
+        gender: editedGender,
       });
 
       Alert.alert("Success", "Profile updated successfully");
@@ -299,6 +386,9 @@ export default function ProfileScreen() {
     ) {
       await fetchLinkedUsers();
     }
+    if (userData?.role === "student") {
+      await fetchPendingRequests();
+    }
     setRefreshing(false);
   };
 
@@ -327,41 +417,82 @@ export default function ProfileScreen() {
 
   if (authLoading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <Text className="text-gray-600">Loading...</Text>
+      <View className="flex-1 bg-[#1C1C1E] items-center justify-center">
+        <View className="w-16 h-16 rounded-full bg-[#2A2A2D] items-center justify-center">
+          <View className="w-8 h-8 rounded-full border-2 border-[#BCF3FF] border-t-transparent animate-spin" />
+        </View>
+        <Text className="text-[#C5D4CA] mt-4 text-base">Loading profile...</Text>
       </View>
     );
   }
 
   if (!userData) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Icon as={UserCircle} size="xl" className="text-gray-400 mb-4" />
-        <Text className="text-gray-600 text-center">
+      <View className="flex-1 bg-[#1C1C1E] items-center justify-center p-6">
+        <View className="w-24 h-24 rounded-full bg-[#2A2A2D] items-center justify-center mb-4">
+          <Icon as={UserCircle} size="xl" className="text-[#C5D4CA]" />
+        </View>
+        <Text className="text-[#C5D4CA] text-center text-base">
           Unable to load profile data
         </Text>
+        <TouchableOpacity
+          onPress={onRefresh}
+          className="mt-4 bg-[#BCF3FF] px-6 py-3 rounded-xl"
+        >
+          <Text className="text-black font-semibold">Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white">
-      <ScrollView
-        className="flex-1"
+    <View className="flex-1 bg-[#1C1C1E]">
+      <Animated.ScrollView
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
+          />
         }
       >
-        {/* Header */}
-        <View className="bg-black pt-16 pb-8 px-6">
-          <HStack className="justify-between items-start mb-6">
-            <Text className="text-white text-2xl font-bold">Profile</Text>
+        <Animated.View
+          style={{
+            height: headerHeight,
+            backgroundColor: config.bgColor,
+            justifyContent: "center",
+            alignItems: "center",
+            overflow: "hidden",
+            minHeight: HEADER_MIN_HEIGHT,
+          }}
+        >
+          <Animated.View
+            style={{
+              transform: [{ scale: imageScale }],
+              opacity: headerOpacity,
+            }}
+          >
+            <Image
+              source={getProfileImage()}
+              style={{ width: 200, height: 200 }}
+              resizeMode="contain"
+            />
+          </Animated.View>
+          
+          <View className="absolute top-12 right-4">
             {!isEditing ? (
               <TouchableOpacity
                 onPress={() => setIsEditing(true)}
-                className="bg-white/10 rounded-full p-2"
+                className="bg-black/10 rounded-full p-3"
               >
-                <Icon as={Edit2} size="sm" className="text-white" />
+                <Icon as={Edit2} size="sm" className="text-black" />
               </TouchableOpacity>
             ) : (
               <HStack space="sm">
@@ -369,477 +500,452 @@ export default function ProfileScreen() {
                   onPress={() => {
                     setIsEditing(false);
                     setEditedName(userData.name || "");
+                    setEditedGender(userData.gender || "male");
                   }}
-                  className="bg-white/10 rounded-full p-2"
+                  className="bg-black/10 rounded-full p-3"
                 >
-                  <Icon as={X} size="sm" className="text-white" />
+                  <Icon as={X} size="sm" className="text-black" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveProfile}
                   disabled={saving}
-                  className="bg-white rounded-full p-2"
+                  className="bg-black rounded-full p-3"
                 >
                   <Icon
                     as={Save}
                     size="sm"
-                    className={saving ? "text-gray-400" : "text-black"}
+                    className={saving ? "text-gray-400" : "text-white"}
                   />
                 </TouchableOpacity>
               </HStack>
             )}
-          </HStack>
-
-          {/* Profile Photo */}
-          <View className="items-center mb-4">
-            <Avatar size="2xl" className="bg-white border-4 border-white/20">
-              {userData.photoURL ? (
-                <AvatarImage source={{ uri: userData.photoURL }} />
-              ) : (
-                <AvatarFallbackText className="text-black font-bold text-2xl">
-                  {getInitials(userData.name || "User")}
-                </AvatarFallbackText>
-              )}
-            </Avatar>
-            {isEditing && (
-              <TouchableOpacity className="mt-3">
-                <Text className="text-white/80 text-sm underline">
-                  Change Photo
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Profile Content */}
-        <VStack className="px-6 py-6" space="lg">
-          {/* Basic Information */}
-          <VStack space="md">
-            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Basic Information
-            </Text>
+        <View className="bg-[#1C1C1E] rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+          <View className="items-center mb-6">
+            <View className="relative">
+              <Avatar size="2xl" className="bg-[#2A2A2D] border-4 border-[#2A2A2D]">
+                {userData.photoURL ? (
+                  <AvatarImage source={{ uri: userData.photoURL }} />
+                ) : (
+                  <Image
+                    source={getProfileImage()}
+                    style={{ width: 72, height: 72 }}
+                    resizeMode="contain"
+                  />
+                )}
+              </Avatar>
+              <View 
+                className="absolute -bottom-2 -right-2 rounded-full px-3 py-1 flex-row items-center"
+                style={{ backgroundColor: config.accentColor }}
+              >
+                <Icon as={config.icon} size="2xs" className="text-[#232323] mr-1" />
+                <Text className="text-[#232323] text-xs font-bold">
+                  {config.label}
+                </Text>
+              </View>
+            </View>
 
-            {/* Name */}
-            <VStack space="xs">
-              <HStack className="items-center" space="xs">
-                <Icon as={User} size="xs" className="text-gray-400" />
-                <Text className="text-xs text-gray-600">Name</Text>
-              </HStack>
-              {isEditing ? (
-                <Input variant="outline" size="md" className="border-gray-300">
+            {isEditing ? (
+              <View className="w-full mt-4">
+                <Input 
+                  variant="outline" 
+                  size="lg" 
+                  className="border-[#2A2A2D] bg-[#2A2A2D] rounded-xl mb-3"
+                >
                   <InputField
                     value={editedName}
                     onChangeText={setEditedName}
                     placeholder="Enter your name"
-                    className="text-black"
+                    className="text-white text-center text-lg font-semibold"
+                    placeholderTextColor="#6B7280"
                   />
                 </Input>
-              ) : (
-                <Text className="text-base text-black font-medium">
-                  {userData.name || "N/A"}
+                <HStack space="md" className="w-full">
+                  <TouchableOpacity
+                    onPress={() => setEditedGender("male")}
+                    className={`flex-1 py-3 px-4 rounded-xl flex-row items-center justify-center ${
+                      editedGender === "male"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        editedGender === "male" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Male
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setEditedGender("female")}
+                    className={`flex-1 py-3 px-4 rounded-xl flex-row items-center justify-center ${
+                      editedGender === "female"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        editedGender === "female" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Female
+                    </Text>
+                  </TouchableOpacity>
+                </HStack>
+              </View>
+            ) : (
+              <>
+                <Text className="text-white text-2xl font-bold mt-4">
+                  {userData.name || "User"}
                 </Text>
-              )}
-            </VStack>
+                <View className="flex-row items-center mt-1">
+                  <Icon as={UserIcon} size="xs" className="text-[#6B7280] mr-1" />
+                  <Text className="text-[#6B7280] text-sm capitalize">
+                    {userData.gender || "male"}
+                  </Text>
+                </View>
+              </>
+            )}
+            
+            <Text className="text-[#C5D4CA] text-sm mt-1">
+              {userData.email}
+            </Text>
+          </View>
 
-            {/* Email */}
-            <VStack space="xs">
-              <HStack className="items-center" space="xs">
-                <Icon as={Mail} size="xs" className="text-gray-400" />
-                <Text className="text-xs text-gray-600">Email</Text>
+          <View className="bg-[#2A2A2D] rounded-2xl p-5 mb-4">
+            <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+              Basic Information
+            </Text>
+
+            <VStack space="md">
+              <HStack className="items-center justify-between">
+                <HStack className="items-center" space="sm">
+                  <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                    <Icon as={Mail} size="sm" className="text-[#BCF3FF]" />
+                  </View>
+                  <VStack>
+                    <Text className="text-[#C5D4CA] text-xs">Email</Text>
+                    <Text className="text-white text-sm font-medium">
+                      {userData.email}
+                    </Text>
+                  </VStack>
+                </HStack>
               </HStack>
-              <Text className="text-base text-black">{userData.email}</Text>
-            </VStack>
 
-            {/* Role */}
-            <VStack space="xs">
-              <HStack className="items-center" space="xs">
-                <Icon as={Users} size="xs" className="text-gray-400" />
-                <Text className="text-xs text-gray-600">Role</Text>
+              <HStack className="items-center justify-between">
+                <HStack className="items-center" space="sm">
+                  <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                    <Icon as={Users} size="sm" style={{ color: config.accentColor }} />
+                  </View>
+                  <VStack>
+                    <Text className="text-[#C5D4CA] text-xs">Role</Text>
+                    <Text className="text-white text-sm font-medium capitalize">
+                      {userData.role}
+                    </Text>
+                  </VStack>
+                </HStack>
               </HStack>
-              <Text className="text-base text-black capitalize">
-                {userData.role}
-              </Text>
+
+              <HStack className="items-center justify-between">
+                <HStack className="items-center" space="sm">
+                  <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                    <Icon as={Calendar} size="sm" className="text-[#F9CD61]" />
+                  </View>
+                  <VStack>
+                    <Text className="text-[#C5D4CA] text-xs">Member Since</Text>
+                    <Text className="text-white text-sm font-medium">
+                      {formatDate(userData.createdAt)}
+                    </Text>
+                  </VStack>
+                </HStack>
+              </HStack>
             </VStack>
-          </VStack>
+          </View>
 
-          <Divider className="bg-gray-200" />
-
-          {/* Academic/Professional Information */}
           {(userData.role === "student" || userData.role === "teacher") && (
-            <>
-              <VStack space="md">
-                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {userData.role === "student"
-                    ? "Academic Information"
-                    : "Professional Information"}
-                </Text>
+            <View className="bg-[#2A2A2D] rounded-2xl p-5 mb-4">
+              <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+                {userData.role === "student" ? "Academic Details" : "Professional Details"}
+              </Text>
 
-                {/* Student-specific fields */}
+              <VStack space="md">
                 {userData.role === "student" && (
                   <>
                     {userData.usn && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={Hash}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">USN</Text>
-                        </HStack>
-                        <Text className="text-base text-black font-mono">
-                          {userData.usn}
-                        </Text>
-                      </VStack>
+                      <HStack className="items-center" space="sm">
+                        <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                          <Icon as={Hash} size="sm" className="text-[#F96857]" />
+                        </View>
+                        <VStack>
+                          <Text className="text-[#C5D4CA] text-xs">USN</Text>
+                          <Text className="text-white text-sm font-mono font-medium">
+                            {userData.usn}
+                          </Text>
+                        </VStack>
+                      </HStack>
                     )}
 
                     {(userData.departmentId || userData.department) && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={BookOpen}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">
-                            Department
+                      <HStack className="items-center" space="sm">
+                        <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                          <Icon as={BookOpen} size="sm" className="text-[#7477FF]" />
+                        </View>
+                        <VStack>
+                          <Text className="text-[#C5D4CA] text-xs">Department</Text>
+                          <Text className="text-white text-sm font-medium">
+                            {userData.departmentId || userData.department}
                           </Text>
-                        </HStack>
-                        <Text className="text-base text-black">
-                          {userData.departmentId || userData.department}
-                        </Text>
-                      </VStack>
+                        </VStack>
+                      </HStack>
                     )}
 
                     {userData.semester && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={Calendar}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">
-                            Semester
+                      <HStack className="items-center" space="sm">
+                        <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                          <Icon as={Calendar} size="sm" className="text-[#BCF3FF]" />
+                        </View>
+                        <VStack>
+                          <Text className="text-[#C5D4CA] text-xs">Semester</Text>
+                          <Text className="text-white text-sm font-medium">
+                            {userData.semester}
+                            {userData.section && ` - Section ${userData.section}`}
                           </Text>
-                        </HStack>
-                        <Text className="text-base text-black">
-                          Semester {userData.semester}
-                          {userData.section && ` - Section ${userData.section}`}
-                        </Text>
-                      </VStack>
-                    )}
-
-                    {userData.batch && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={Calendar}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">Batch</Text>
-                        </HStack>
-                        <Text className="text-base text-black">
-                          {userData.batch}
-                        </Text>
-                      </VStack>
+                        </VStack>
+                      </HStack>
                     )}
                   </>
                 )}
 
-                {/* Teacher-specific fields */}
                 {userData.role === "teacher" && (
                   <>
                     {userData.teacherCode && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={Users}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">
-                            Teacher Code
+                      <HStack className="items-center" space="sm">
+                        <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                          <Icon as={Users} size="sm" className="text-[#F96857]" />
+                        </View>
+                        <VStack>
+                          <Text className="text-[#C5D4CA] text-xs">Teacher Code</Text>
+                          <Text className="text-white text-sm font-mono font-medium">
+                            {userData.teacherCode}
                           </Text>
-                        </HStack>
-                        <Text className="text-base text-black font-mono">
-                          {userData.teacherCode}
-                        </Text>
-                      </VStack>
+                        </VStack>
+                      </HStack>
                     )}
 
                     {(userData.departmentId || userData.department) && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={BookOpen}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">
-                            Department
+                      <HStack className="items-center" space="sm">
+                        <View className="w-10 h-10 rounded-xl bg-[#1C1C1E] items-center justify-center">
+                          <Icon as={BookOpen} size="sm" className="text-[#7477FF]" />
+                        </View>
+                        <VStack>
+                          <Text className="text-[#C5D4CA] text-xs">Department</Text>
+                          <Text className="text-white text-sm font-medium">
+                            {userData.departmentId || userData.department}
                           </Text>
-                        </HStack>
-                        <Text className="text-base text-black">
-                          {userData.departmentId || userData.department}
-                        </Text>
-                      </VStack>
-                    )}
-
-                    {userData.department && (
-                      <VStack space="xs">
-                        <HStack className="items-center" space="xs">
-                          <Icon
-                            as={BookOpen}
-                            size="xs"
-                            className="text-gray-400"
-                          />
-                          <Text className="text-xs text-gray-600">
-                            Department
-                          </Text>
-                        </HStack>
-                        <Text className="text-base text-black">
-                          {userData.department}
-                        </Text>
-                      </VStack>
+                        </VStack>
+                      </HStack>
                     )}
                   </>
                 )}
               </VStack>
-
-              <Divider className="bg-gray-200" />
-            </>
+            </View>
           )}
 
-          {/* Pending Parent Requests Section - For Students */}
           {userData.role === "student" && (
-            <>
-              <VStack space="md">
-                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Pending Parent Requests
+            <View className="mb-4">
+              <HStack className="justify-between items-center mb-3 px-1">
+                <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide">
+                  Pending Requests
                 </Text>
-
-                {loadingPending ? (
-                  <Text className="text-gray-500 text-sm">Loading...</Text>
-                ) : pendingRequests.length > 0 ? (
-                  <VStack space="sm">
-                    {pendingRequests.map((request) => (
-                      <View
-                        key={request.id}
-                        className="bg-amber-50 border border-amber-200 rounded-lg p-4"
-                      >
-                        <HStack className="items-start mb-3" space="sm">
-                          <Avatar size="sm" className="bg-amber-200">
-                            <AvatarFallbackText className="text-amber-700">
-                              {getInitials(request.parentName)}
-                            </AvatarFallbackText>
-                          </Avatar>
-                          <VStack className="flex-1">
-                            <Text className="text-base text-black font-medium">
-                              {request.parentName}
-                            </Text>
-                            <Text className="text-xs text-gray-600">
-                              {request.parentEmail}
-                            </Text>
-                          </VStack>
-                          <View className="bg-amber-100 px-2 py-1 rounded">
-                            <Text className="text-amber-800 text-xs font-semibold">
-                              Pending
-                            </Text>
-                          </View>
-                        </HStack>
-
-                        <Text className="text-sm text-gray-600 mb-3">
-                          wants to link with your account to view your academic
-                          progress.
-                        </Text>
-
-                        <HStack space="sm">
-                          <TouchableOpacity
-                            onPress={() =>
-                              handleRejectRequest(request.id)
-                            }
-                            className="flex-1 bg-gray-100 py-2 px-4 rounded-lg items-center"
-                          >
-                            <Text className="text-gray-700 font-semibold text-sm">
-                              Decline
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() =>
-                              handleAcceptRequest(
-                                request.id,
-                                request.parentName,
-                              )
-                            }
-                            className="flex-1 bg-blue-600 py-2 px-4 rounded-lg items-center"
-                          >
-                            <Text className="text-white font-semibold text-sm">
-                              Accept
-                            </Text>
-                          </TouchableOpacity>
-                        </HStack>
-                      </View>
-                    ))}
-                  </VStack>
-                ) : (
-                  <View className="border border-dashed border-gray-300 rounded-lg p-6 items-center">
-                    <Icon
-                      as={UserCheck}
-                      size="lg"
-                      className="text-gray-300 mb-2"
-                    />
-                    <Text className="text-gray-500 text-sm text-center">
-                      No pending parent requests
+                {pendingRequests.length > 0 && (
+                  <View className="bg-[#F96857] rounded-full px-2 py-0.5">
+                    <Text className="text-white text-xs font-bold">
+                      {pendingRequests.length}
                     </Text>
                   </View>
                 )}
-              </VStack>
-
-              <Divider className="bg-gray-200" />
-            </>
-          )}
-
-          {/* Linked Users Section */}
-          {(userData.role === "parent" || userData.role === "student") && (
-            <>
-              <VStack space="md">
-                <HStack className="justify-between items-center">
-                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    {userData.role === "parent"
-                      ? "Linked Students"
-                      : "Linked Parents"}
-                  </Text>
-                  {userData.role === "parent" && (
-                    <TouchableOpacity
-                      onPress={() => router.push("/(auth)/parent-link")}
-                      className="bg-blue-100 px-3 py-1 rounded-full"
-                    >
-                      <Text className="text-blue-700 text-xs font-semibold">
-                        + Link Student
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </HStack>
-
-                {loadingLinks ? (
-                  <Text className="text-gray-500 text-sm">Loading...</Text>
-                ) : linkedUsers.length > 0 ? (
-                  <VStack space="sm">
-                    {linkedUsers.map((linkedUser) => (
-                      <View
-                        key={linkedUser.uid}
-                        className="border border-gray-200 rounded-lg p-4"
-                      >
-                        <HStack className="items-center mb-2" space="sm">
-                          <Avatar size="sm" className="bg-gray-200">
-                            <AvatarFallbackText className="text-gray-600">
-                              {getInitials(linkedUser.name)}
-                            </AvatarFallbackText>
-                          </Avatar>
-                          <VStack className="flex-1">
-                            <Text className="text-base text-black font-medium">
-                              {linkedUser.name}
-                            </Text>
-                            <Text className="text-xs text-gray-600">
-                              {linkedUser.email}
-                            </Text>
-                          </VStack>
-                        </HStack>
-
-                        {userData.role === "parent" && linkedUser.usn && (
-                          <VStack space="xs" className="mt-2">
-                            <Text className="text-xs text-gray-600">
-                              USN: {linkedUser.usn}
-                            </Text>
-                            {(linkedUser.departmentId || linkedUser.department) && (
-                              <Text className="text-xs text-gray-600">
-                                {linkedUser.departmentId || linkedUser.department}
-                                {linkedUser.semester &&
-                                  ` • Sem ${linkedUser.semester}`}
-                                {linkedUser.section &&
-                                  ` • Sec ${linkedUser.section}`}
-                              </Text>
-                            )}
-                          </VStack>
-                        )}
-                      </View>
-                    ))}
-                  </VStack>
-                ) : (
-                  <View className="border border-dashed border-gray-300 rounded-lg p-6 items-center">
-                    <Icon as={Users} size="lg" className="text-gray-300 mb-2" />
-                    <Text className="text-gray-500 text-sm text-center">
-                      {userData.role === "parent"
-                        ? "No students linked yet"
-                        : "No parents linked yet"}
-                    </Text>
-                  </View>
-                )}
-              </VStack>
-
-              <Divider className="bg-gray-200" />
-            </>
-          )}
-
-          {/* Account Information */}
-          <VStack space="md">
-            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Account Information
-            </Text>
-
-            <VStack space="xs">
-              <HStack className="items-center" space="xs">
-                <Icon as={Calendar} size="xs" className="text-gray-400" />
-                <Text className="text-xs text-gray-600">Member Since</Text>
               </HStack>
-              <Text className="text-base text-black">
-                {formatDate(userData.createdAt)}
-              </Text>
-            </VStack>
 
-            {userData.isActive !== undefined && (
-              <VStack space="xs">
-                <Text className="text-xs text-gray-600">Status</Text>
-                <Text
-                  className={`text-base font-medium ${
-                    userData.isActive ? "text-green-600" : "text-red-600"
-                  }`}
-                >
-                  {userData.isActive ? "Active" : "Inactive"}
+              {loadingPending ? (
+                <View className="bg-[#2A2A2D] rounded-2xl p-6 items-center">
+                  <View className="w-6 h-6 rounded-full border-2 border-[#BCF3FF] border-t-transparent animate-spin" />
+                </View>
+              ) : pendingRequests.length > 0 ? (
+                <VStack space="sm">
+                  {pendingRequests.map((request) => (
+                    <View
+                      key={request.id}
+                      className="bg-[#2A2A2D] rounded-2xl p-4 border border-[#F9CD61]/30"
+                    >
+                      <HStack className="items-start mb-3" space="sm">
+                        <Avatar size="sm" className="bg-[#F9CD61]/20">
+                          <AvatarFallbackText className="text-[#F9CD61]">
+                            {getInitials(request.parentName)}
+                          </AvatarFallbackText>
+                        </Avatar>
+                        <VStack className="flex-1">
+                          <Text className="text-base text-white font-medium">
+                            {request.parentName}
+                          </Text>
+                          <Text className="text-xs text-[#C5D4CA]">
+                            {request.parentEmail}
+                          </Text>
+                        </VStack>
+                        <View className="bg-[#F9CD61]/20 px-2 py-1 rounded-lg">
+                          <Text className="text-[#F9CD61] text-xs font-semibold">
+                            Pending
+                          </Text>
+                        </View>
+                      </HStack>
+
+                      <Text className="text-sm text-[#C5D4CA] mb-3">
+                        wants to link with your account to view your academic progress.
+                      </Text>
+
+                      <HStack space="sm">
+                        <TouchableOpacity
+                          onPress={() => handleRejectRequest(request.id)}
+                          className="flex-1 bg-[#1C1C1E] py-3 px-4 rounded-xl items-center"
+                        >
+                          <Text className="text-[#C5D4CA] font-semibold text-sm">
+                            Decline
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            handleAcceptRequest(request.id, request.parentName)
+                          }
+                          className="flex-1 bg-[#BCF3FF] py-3 px-4 rounded-xl items-center"
+                        >
+                          <Text className="text-[#232323] font-semibold text-sm">
+                            Accept
+                          </Text>
+                        </TouchableOpacity>
+                      </HStack>
+                    </View>
+                  ))}
+                </VStack>
+              ) : (
+                <View className="bg-[#2A2A2D] rounded-2xl p-6 items-center border border-dashed border-[#3C443F]">
+                  <Icon
+                    as={UserCheck}
+                    size="lg"
+                    className="text-[#3C443F] mb-2"
+                  />
+                  <Text className="text-[#6B7280] text-sm text-center">
+                    No pending parent requests
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {(userData.role === "parent" || userData.role === "student") && (
+            <View className="mb-4">
+              <HStack className="justify-between items-center mb-3 px-1">
+                <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide">
+                  {userData.role === "parent" ? "Linked Students" : "Linked Parents"}
                 </Text>
-              </VStack>
-            )}
-          </VStack>
+                {userData.role === "parent" && (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(auth)/parent-link")}
+                    className="bg-[#BCF3FF]/10 px-3 py-1.5 rounded-full flex-row items-center"
+                  >
+                    <Text className="text-[#BCF3FF] text-xs font-semibold">
+                      + Link Student
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </HStack>
 
-          {/* Logout Button */}
+              {loadingLinks ? (
+                <View className="bg-[#2A2A2D] rounded-2xl p-6 items-center">
+                  <View className="w-6 h-6 rounded-full border-2 border-[#BCF3FF] border-t-transparent animate-spin" />
+                </View>
+              ) : linkedUsers.length > 0 ? (
+                <VStack space="sm">
+                  {linkedUsers.map((linkedUser) => (
+                    <View
+                      key={linkedUser.uid}
+                      className="bg-[#2A2A2D] rounded-2xl p-4"
+                    >
+                      <HStack className="items-center" space="sm">
+                        <Avatar size="sm" className="bg-[#1C1C1E]">
+                          <AvatarFallbackText className="text-[#C5D4CA]">
+                            {getInitials(linkedUser.name)}
+                          </AvatarFallbackText>
+                        </Avatar>
+                        <VStack className="flex-1">
+                          <Text className="text-base text-white font-medium">
+                            {linkedUser.name}
+                          </Text>
+                          <Text className="text-xs text-[#C5D4CA]">
+                            {linkedUser.email}
+                          </Text>
+                        </VStack>
+                        <Icon as={ChevronRight} size="sm" className="text-[#3C443F]" />
+                      </HStack>
+
+                      {userData.role === "parent" && linkedUser.usn && (
+                        <View className="mt-3 pt-3 border-t border-[#1C1C1E]">
+                          <Text className="text-xs text-[#C5D4CA]">
+                            USN: <Text className="text-white font-mono">{linkedUser.usn}</Text>
+                          </Text>
+                          {(linkedUser.departmentId || linkedUser.department) && (
+                            <Text className="text-xs text-[#C5D4CA] mt-1">
+                              {linkedUser.departmentId || linkedUser.department}
+                              {linkedUser.semester && ` • Sem ${linkedUser.semester}`}
+                              {linkedUser.section && ` • Sec ${linkedUser.section}`}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </VStack>
+              ) : (
+                <View className="bg-[#2A2A2D] rounded-2xl p-6 items-center border border-dashed border-[#3C443F]">
+                  <Icon as={Users} size="lg" className="text-[#3C443F] mb-2" />
+                  <Text className="text-[#6B7280] text-sm text-center">
+                    {userData.role === "parent"
+                      ? "No students linked yet"
+                      : "No parents linked yet"}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <Button
             onPress={() => setShowLogoutDialog(true)}
-            className="bg-black mt-6"
+            className="bg-[#F96857] mt-6"
             size="lg"
           >
             <ButtonIcon as={LogOut} className="text-white mr-2" />
             <ButtonText className="text-white font-semibold">Logout</ButtonText>
           </Button>
 
-          <View className="h-8" />
-        </VStack>
-      </ScrollView>
+          <View className="h-24" />
+        </View>
+      </Animated.ScrollView>
 
-      {/* Logout Confirmation Dialog */}
       <AlertDialog
         isOpen={showLogoutDialog}
         onClose={() => setShowLogoutDialog(false)}
       >
         <AlertDialogBackdrop />
-        <AlertDialogContent className="bg-white">
+        <AlertDialogContent className="bg-[#2A2A2D]">
           <AlertDialogHeader>
-            <Heading size="lg" className="text-black">
+            <Heading size="lg" className="text-white">
               Confirm Logout
             </Heading>
           </AlertDialogHeader>
           <AlertDialogBody>
-            <Text className="text-gray-700">
+            <Text className="text-[#C5D4CA]">
               Are you sure you want to logout?
             </Text>
           </AlertDialogBody>
@@ -848,11 +954,11 @@ export default function ProfileScreen() {
               <Button
                 variant="outline"
                 onPress={() => setShowLogoutDialog(false)}
-                className="border-gray-300"
+                className="border-[#3C443F]"
               >
-                <ButtonText className="text-black">Cancel</ButtonText>
+                <ButtonText className="text-[#C5D4CA]">Cancel</ButtonText>
               </Button>
-              <Button onPress={handleLogout} className="bg-black">
+              <Button onPress={handleLogout} className="bg-[#F96857]">
                 <ButtonText className="text-white">Logout</ButtonText>
               </Button>
             </HStack>
