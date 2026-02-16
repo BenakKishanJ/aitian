@@ -30,6 +30,7 @@ interface CreateEventModalProps {
   visible: boolean;
   onClose: () => void;
   onSave: (eventData: EventFormData) => Promise<void>;
+  onDelete?: () => Promise<void>;
   userRole: 'student' | 'teacher' | 'admin' | 'parent';
   userId: string;
   availableCourses?: { id: string; name: string }[];
@@ -42,6 +43,7 @@ export function CreateEventModal({
   visible,
   onClose,
   onSave,
+  onDelete,
   userRole,
   userId,
   availableCourses = [],
@@ -242,13 +244,24 @@ export function CreateEventModal({
           <Text style={styles.headerTitle}>
             {editingEvent ? 'Edit Event' : 'New Event'}
           </Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#000000" />
-            ) : (
-              <Text style={styles.saveButton}>Save</Text>
+          <HStack space="sm" className="items-center">
+            {isEditing && onDelete && (
+              <TouchableOpacity 
+                onPress={onDelete} 
+                disabled={saving}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <Text style={styles.saveButton}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </HStack>
         </View>
 
         <ScrollView
@@ -608,6 +621,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#000000',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FEF0EE',
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F96857',
   },
   scrollView: {
     flex: 1,

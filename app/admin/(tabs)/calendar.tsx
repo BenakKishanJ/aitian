@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   View,
   ScrollView,
@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
-  Modal,
-  TextInput,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
@@ -19,31 +19,31 @@ import {
   ChevronRight,
   Plus,
   Filter,
-  Calendar as CalendarIcon,
-  Search,
-  Trash2,
-  Edit3,
+  Clock,
+  MapPin,
+  Calendar,
+  MoreVertical,
 } from "lucide-react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  interpolate,
+  Extrapolate,
+} from "react-native-reanimated";
 import { useAuth } from "@/lib/AuthContext";
 import {
   useCalendarEvents,
   EventType,
   ExpandedEvent,
 } from "@/lib/hooks/useCalendarEvents";
-import { MonthCalendar } from "@/components/calendar/MonthCalendar";
-import { WeekCalendar } from "@/components/calendar/WeekCalendar";
-import { EventList } from "@/components/calendar/EventList";
 import { CreateEventModal } from "@/components/calendar/CreateEventModal";
 import type { EventFormData } from "@/types/calendar";
 import {
   formatDate,
-  formatTime,
-  getMonthRange,
-  getWeekRange,
-  getPreviousMonth,
-  getNextMonth,
-  getPreviousWeek,
-  getNextWeek,
+  getMonthCalendarGrid,
+  getWeekForDate,
+  DayInfo,
 } from "@/lib/utils/calendarUtils";
 import {
   collection,
@@ -60,39 +60,98 @@ import { db } from "@/lib/firebase";
 import { Alert } from "react-native";
 import { undefinedToNull } from "@/lib/utils/firebaseSanitizer";
 
-type ViewMode = "month" | "week";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+// Dark Pastel Theme
+const colors = {
+  background: "#111318",
+  surface: "#1A1D24",
+  elevated: "#20242D",
+  border: "#2A2F3A",
+
+  textPrimary: "#F2F4F7",
+  textSecondary: "#C5D4CA",
+
+  blue: "#BCF3FF",
+  red: "#F65F50",
+  yellow: "#F9CD61",
+  grey: "#C5D4CA",
+  purple: "#7477FF",
+};
+
+// Event type configuration - solid colors with good contrast
+const eventTypeConfig: Record<EventType, { 
+  label: string; 
+  bg: string; 
+  text: string;
+  badgeBg: string;
+  badgeText: string;
+}> = {
+  class: { 
+    label: "Classes", 
+    bg: "#BCF3FF", 
+    text: "#0A4B5C",
+    badgeBg: "#232323",
+    badgeText: "#BCF3FF"
+  },
+  exam: { 
+    label: "Exams", 
+    bg: "#F96857", 
+    text: "#FFFFFF",
+    badgeBg: "#FFFFFF",
+    badgeText: "#F96857"
+  },
+  assignment: { 
+    label: "Assignments", 
+    bg: "#F9CD61", 
+    text: "#5C4A0A",
+    badgeBg: "#232323",
+    badgeText: "#F9CD61"
+  },
+  personal: { 
+    label: "Personal", 
+    bg: "#7477FF", 
+    text: "#FFFFFF",
+    badgeBg: "#FFFFFF",
+    badgeText: "#7477FF"
+  },
+};
+
+// Height values for collapse animation
+const MONTH_HEIGHT = 380;
+const WEEK_HEIGHT = 70;
+const SNAP_THRESHOLD = 120;
+
+// Get day color based on event count
+const getDayColor = (count: number): string => {
+  if (count === 0) return colors.elevated;
+  if (count === 1) return colors.blue;
+  if (count === 2) return colors.yellow;
+  return colors.purple;
+};
 
 export default function AdminCalendarScreen() {
   const { user, userData, role } = useAuth();
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [showEventList, setShowEventList] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<EventType[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [availableCourses, setAvailableCourses] = useState<
-    { id: string; name: string }[]
-  >([]);
-  const [selectedEvent, setSelectedEvent] = useState<ExpandedEvent | null>(
-    null,
-  );
-  const [showEventDetail, setShowEventDetail] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
+  const [availableCourses, setAvailableCourses] = useState<{ id: string; name: string }[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<ExpandedEvent | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Get date range based on view mode
-  const dateRange = useMemo(() => {
-    return viewMode === "month"
-      ? getMonthRange(currentDate)
-      : getWeekRange(currentDate);
-  }, [currentDate, viewMode]);
+  // Reanimated shared values
+  const scrollY = useSharedValue(0);
+  const calendarHeight = useSharedValue(MONTH_HEIGHT);
+
+  // Refs
+  const scrollRef = useRef<ScrollView>(null);
 
   // Fetch all course instances for admin
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchCourses = async () => {
       if (!user || role !== "admin") return;
 
@@ -104,7 +163,6 @@ export default function AdminCalendarScreen() {
         const courses = await Promise.all(
           snapshot.docs.map(async (docSnap) => {
             const data = docSnap.data();
-            // Get course details
             const courseDoc = await getDocs(
               query(collection(db, "courses"), where("__name__", "==", data.courseId))
             );
@@ -125,256 +183,233 @@ export default function AdminCalendarScreen() {
     fetchCourses();
   }, [user, role]);
 
+  // Memoize date range to prevent infinite re-fetching
+  const dateRange = useMemo(() => ({
+    startDate: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1),
+    endDate: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0),
+  }), [currentDate]);
+
   // Fetch calendar events
-  const {
-    events,
-    loading,
-    error,
-    refresh: refreshEvents,
-  } = useCalendarEvents({
-    startDate: dateRange.start,
-    endDate: dateRange.end,
+  const { events, loading, error, refresh: refreshEvents } = useCalendarEvents({
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    eventTypes: selectedFilters.length > 0 ? selectedFilters : undefined,
   });
 
-  // Filter events
-  const filteredEvents = useMemo(() => {
-    let filtered = events;
-
-    // Apply type filters
-    if (selectedFilters.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedFilters.includes(event.type)
+  // Get events for selected date
+  const selectedDateEvents = useMemo(() => {
+    return events.filter((event) => {
+      const eventDate = event.startTime.toDate();
+      return (
+        eventDate.getFullYear() === selectedDate.getFullYear() &&
+        eventDate.getMonth() === selectedDate.getMonth() &&
+        eventDate.getDate() === selectedDate.getDate()
       );
-    }
+    });
+  }, [events, selectedDate]);
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (event) =>
-          event.title.toLowerCase().includes(query) ||
-          (event.courseName && event.courseName.toLowerCase().includes(query))
+  // Get week days for selected date
+  const weekDays = useMemo(() => {
+    return getWeekForDate(selectedDate);
+  }, [selectedDate]);
+
+  // Animated styles
+  const calendarAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      height: calendarHeight.value,
+      opacity: interpolate(
+        calendarHeight.value,
+        [WEEK_HEIGHT, MONTH_HEIGHT],
+        [0.95, 1],
+        Extrapolate.CLAMP
+      ),
+    };
+  });
+
+  // Handle scroll for collapse/expand
+  const handleScroll = useCallback(
+    (event: any) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      scrollY.value = offsetY;
+
+      const newHeight = interpolate(
+        offsetY,
+        [0, SNAP_THRESHOLD],
+        [MONTH_HEIGHT, WEEK_HEIGHT],
+        Extrapolate.CLAMP
       );
-    }
+      calendarHeight.value = newHeight;
+    },
+    [scrollY, calendarHeight]
+  );
 
-    return filtered;
-  }, [events, selectedFilters, searchQuery]);
+  // Handle snap on scroll end
+  const handleScrollEndDrag = useCallback(
+    (event: any) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
 
-  // Navigation handlers
-  const handlePrevious = useCallback(() => {
-    setCurrentDate((prev) =>
-      viewMode === "month" ? getPreviousMonth(prev) : getPreviousWeek(prev)
-    );
-  }, [viewMode]);
+      if (offsetY > SNAP_THRESHOLD / 2) {
+        calendarHeight.value = withSpring(WEEK_HEIGHT, { damping: 20, stiffness: 150 });
+        setIsCollapsed(true);
+        scrollRef.current?.scrollTo({ y: SNAP_THRESHOLD, animated: true });
+      } else {
+        calendarHeight.value = withSpring(MONTH_HEIGHT, { damping: 20, stiffness: 150 });
+        setIsCollapsed(false);
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    },
+    [calendarHeight]
+  );
 
-  const handleNext = useCallback(() => {
-    setCurrentDate((prev) =>
-      viewMode === "month" ? getNextMonth(prev) : getNextWeek(prev)
-    );
-  }, [viewMode]);
+  const handlePreviousMonth = () => {
+    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
 
-  const handleToday = useCallback(() => {
-    setCurrentDate(new Date());
-  }, []);
+  const handleNextMonth = () => {
+    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
 
-  // Date selection handler
-  const handleDateSelect = useCallback((date: Date) => {
+  const handleToday = () => {
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDate(today);
+  };
+
+  const handleDatePress = (date: Date) => {
     setSelectedDate(date);
-    setShowEventList(true);
-  }, []);
+  };
 
-  // Event creation handler
-  const handleCreateEvent = async (formData: EventFormData) => {
-    if (!user) return;
+  const handleEventPress = (event: ExpandedEvent) => {
+    setSelectedEvent(event);
+    setIsEditing(true);
+    setTimeout(() => setShowCreateModal(true), 50);
+  };
 
+  const handleCreateEvent = () => {
+    setSelectedEvent(null);
+    setIsEditing(false);
+    setShowCreateModal(true);
+  };
+
+  const handleSaveEvent = async (eventData: EventFormData) => {
     try {
-      const startDateTime = new Date(formData.startDate);
-      startDateTime.setHours(
-        formData.startTime.getHours(),
-        formData.startTime.getMinutes()
-      );
+      if (isEditing && selectedEvent) {
+        let courseName = null;
+        if (eventData.courseInstanceId) {
+          const course = availableCourses.find((c) => c.id === eventData.courseInstanceId);
+          courseName = course?.name || null;
+        }
 
-      const endDateTime = new Date(formData.endDate);
-      endDateTime.setHours(
-        formData.endTime.getHours(),
-        formData.endTime.getMinutes()
-      );
-
-      const eventData: any = {
-        title: formData.title,
-        type: formData.type,
-        courseInstanceId: formData.courseInstanceId || null,
-        courseName: formData.courseInstanceId
-          ? availableCourses.find((c) => c.id === formData.courseInstanceId)
-              ?.name || null
-          : null,
-        createdBy: user.uid,
-        startTime: Timestamp.fromDate(startDateTime),
-        endTime: Timestamp.fromDate(endDateTime),
-        isAttendanceEnabled: formData.isAttendanceEnabled,
-        createdAt: Timestamp.now(),
-      };
-
-      // Only add optional fields if they have values (not undefined)
-      if (formData.description) {
-        eventData.description = formData.description;
-      }
-      if (formData.location) {
-        eventData.location = formData.location;
-      }
-
-      // Handle recurrence
-      if (formData.isRecurring) {
-        eventData.recurrenceRule = {
-          frequency: formData.recurrenceFrequency,
-          days: formData.recurrenceDays || null,
-          until: formData.recurrenceUntil
-            ? Timestamp.fromDate(formData.recurrenceUntil)
-            : null,
+        const eventDoc: any = {
+          title: eventData.title,
+          type: eventData.type,
+          courseInstanceId: eventData.courseInstanceId || null,
+          courseName: courseName,
+          startTime: Timestamp.fromDate(eventData.startDate),
+          endTime: Timestamp.fromDate(eventData.endDate),
+          isAttendanceEnabled: eventData.isAttendanceEnabled,
+          updatedAt: Timestamp.now(),
         };
-      } else {
-        eventData.recurrenceRule = null;
-      }
 
-      // Sanitize to remove any undefined values before saving to Firebase
-      const sanitizedEventData = undefinedToNull(eventData);
-      await addDoc(collection(db, "calendarEvents"), sanitizedEventData);
-      setShowCreateModal(false);
-      refreshEvents();
+        if (eventData.description) eventDoc.description = eventData.description;
+        else eventDoc.description = null;
+        if (eventData.location) eventDoc.location = eventData.location;
+        else eventDoc.location = null;
+
+        if (eventData.isRecurring) {
+          eventDoc.recurrenceRule = {
+            frequency: eventData.recurrenceFrequency,
+            days: eventData.recurrenceDays || null,
+            until: eventData.recurrenceUntil ? Timestamp.fromDate(eventData.recurrenceUntil) : null,
+          };
+        } else {
+          eventDoc.recurrenceRule = null;
+        }
+
+        const sanitizedEventDoc = undefinedToNull(eventDoc);
+        await updateDoc(
+          doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id),
+          sanitizedEventDoc
+        );
+
+        setShowCreateModal(false);
+        setSelectedEvent(null);
+        setIsEditing(false);
+        Alert.alert("Success", "Event updated successfully");
+      } else {
+        const eventsRef = collection(db, "calendarEvents");
+
+        let courseName = null;
+        if (eventData.courseInstanceId) {
+          const course = availableCourses.find((c) => c.id === eventData.courseInstanceId);
+          courseName = course?.name || null;
+        }
+
+        const eventDoc: any = {
+          title: eventData.title,
+          type: eventData.type,
+          createdBy: user?.uid,
+          createdAt: Timestamp.now(),
+          startTime: Timestamp.fromDate(eventData.startDate),
+          endTime: Timestamp.fromDate(eventData.endDate),
+          isAttendanceEnabled: eventData.isAttendanceEnabled,
+          courseInstanceId: eventData.courseInstanceId || null,
+          courseName: courseName,
+        };
+
+        if (eventData.description) eventDoc.description = eventData.description;
+        if (eventData.location) eventDoc.location = eventData.location;
+
+        if (eventData.isRecurring) {
+          eventDoc.recurrenceRule = {
+            frequency: eventData.recurrenceFrequency,
+            days: eventData.recurrenceDays || null,
+            until: eventData.recurrenceUntil ? Timestamp.fromDate(eventData.recurrenceUntil) : null,
+          };
+        } else {
+          eventDoc.recurrenceRule = null;
+        }
+
+        const sanitizedEventDoc = undefinedToNull(eventDoc);
+        await addDoc(eventsRef, sanitizedEventDoc);
+        setShowCreateModal(false);
+        refreshEvents();
+      }
     } catch (error) {
-      console.error("Error creating event:", error);
-      Alert.alert("Error", "Failed to create event");
+      console.error("Error saving event:", error);
+      throw error;
     }
   };
 
-  // Event update handler
-  const handleUpdateEvent = async (formData: EventFormData) => {
-    if (!user || !selectedEvent) return;
+  const handleDeleteEvent = async () => {
+    if (!selectedEvent) return;
 
-    try {
-      setUpdating(true);
-
-      const startDateTime = new Date(formData.startDate);
-      startDateTime.setHours(
-        formData.startTime.getHours(),
-        formData.startTime.getMinutes()
-      );
-
-      const endDateTime = new Date(formData.endDate);
-      endDateTime.setHours(
-        formData.endTime.getHours(),
-        formData.endTime.getMinutes()
-      );
-
-      const eventData: any = {
-        title: formData.title,
-        type: formData.type,
-        courseInstanceId: formData.courseInstanceId || null,
-        courseName: formData.courseInstanceId
-          ? availableCourses.find((c) => c.id === formData.courseInstanceId)
-              ?.name || null
-          : null,
-        startTime: Timestamp.fromDate(startDateTime),
-        endTime: Timestamp.fromDate(endDateTime),
-        isAttendanceEnabled: formData.isAttendanceEnabled,
-        updatedAt: Timestamp.now(),
-      };
-
-      // Only add optional fields if they have values (not undefined)
-      if (formData.description) {
-        eventData.description = formData.description;
-      } else {
-        eventData.description = null;
-      }
-      if (formData.location) {
-        eventData.location = formData.location;
-      } else {
-        eventData.location = null;
-      }
-
-      // Handle recurrence
-      if (formData.isRecurring) {
-        eventData.recurrenceRule = {
-          frequency: formData.recurrenceFrequency,
-          days: formData.recurrenceDays || null,
-          until: formData.recurrenceUntil
-            ? Timestamp.fromDate(formData.recurrenceUntil)
-            : null,
-        };
-      } else {
-        eventData.recurrenceRule = null;
-      }
-
-      // Sanitize to remove any undefined values before saving to Firebase
-      const sanitizedEventData = undefinedToNull(eventData);
-      await updateDoc(doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id), sanitizedEventData);
-      
-      setShowCreateModal(false);
-      setShowEventDetail(false);
-      setSelectedEvent(null);
-      setIsEditing(false);
-      
-      Alert.alert("Success", "Event updated successfully");
-    } catch (error) {
-      console.error("Error updating event:", error);
-      Alert.alert("Error", "Failed to update event");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  // Event deletion handler
-  const handleDeleteEvent = async (eventId: string) => {
-    Alert.alert(
-      "Delete Event",
-      "Are you sure you want to delete this event?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, "calendarEvents", eventId));
-              setShowEventDetail(false);
-              setSelectedEvent(null);
-            } catch (error) {
-              console.error("Error deleting event:", error);
-              Alert.alert("Error", "Failed to delete event");
-            }
-          },
+    Alert.alert("Delete Event", "Are you sure you want to delete this event?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "calendarEvents", selectedEvent.originalEventId || selectedEvent.id));
+            setShowCreateModal(false);
+            setSelectedEvent(null);
+            setIsEditing(false);
+            Alert.alert("Success", "Event deleted successfully");
+          } catch (error) {
+            console.error("Error deleting event:", error);
+            Alert.alert("Error", "Failed to delete event");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  // Refresh handler
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshEvents();
     setRefreshing(false);
   }, [refreshEvents]);
-
-  // Get events for selected date
-  const selectedDateEvents = useMemo(() => {
-    if (!selectedDate) return [];
-    return filteredEvents.filter((event) => {
-      const eventDate = event.startTime.toDate();
-      return (
-        eventDate.getDate() === selectedDate.getDate() &&
-        eventDate.getMonth() === selectedDate.getMonth() &&
-        eventDate.getFullYear() === selectedDate.getFullYear()
-      );
-    });
-  }, [filteredEvents, selectedDate]);
-
-  // Filter options
-  const filterOptions: { type: EventType; label: string; color: string }[] = [
-    { type: "class", label: "Classes", color: "#000000" },
-    { type: "exam", label: "Exams", color: "#EF4444" },
-    { type: "assignment", label: "Assignments", color: "#3B82F6" },
-    { type: "personal", label: "Personal", color: "#10B981" },
-  ];
 
   const toggleFilter = (type: EventType) => {
     setSelectedFilters((prev) =>
@@ -382,357 +417,356 @@ export default function AdminCalendarScreen() {
     );
   };
 
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#000000" />
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const clearFilters = () => {
+    setSelectedFilters([]);
+  };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <HStack space="md" style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Calendar</Text>
-          <HStack space="sm">
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => setShowSearch(!showSearch)}
+  // Get event count for a date
+  const getEventCountForDate = (date: Date): number => {
+    return events.filter((event) => {
+      const eventDate = event.startTime.toDate();
+      return (
+        eventDate.getFullYear() === date.getFullYear() &&
+        eventDate.getMonth() === date.getMonth() &&
+        eventDate.getDate() === date.getDate()
+      );
+    }).length;
+  };
+
+  // Render month grid
+  const renderMonthGrid = () => {
+    const weeks = getMonthCalendarGrid(currentDate);
+
+    return weeks.map((week, weekIndex) => (
+      <View key={week.weekNumber} style={styles.weekRow}>
+        {week.days.map((dayInfo) => {
+          const isSelected = selectedDate.toDateString() === dayInfo.date.toDateString();
+          const isToday = dayInfo.isToday;
+          const eventCount = getEventCountForDate(dayInfo.date);
+          const dayColor = getDayColor(eventCount);
+
+          return (
+            <Pressable
+              key={dayInfo.date.getTime()}
+              onPress={() => handleDatePress(dayInfo.date)}
+              style={styles.dayCell}
             >
-              <Search size={20} color="#000000" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => setShowFilters(!showFilters)}
+              <View
+                style={[
+                  styles.dayCircle,
+                  {
+                    backgroundColor: isSelected ? colors.red : dayColor,
+                    opacity: dayInfo.isCurrentMonth ? 1 : 0.3,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dayText,
+                    {
+                      color: isSelected ? "#FFF" : eventCount > 0 ? "#111" : colors.grey,
+                      fontWeight: isToday || isSelected ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {dayInfo.dayOfMonth}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    ));
+  };
+
+  // Render week view (collapsed state)
+  const renderWeekView = () => {
+    return (
+      <View style={styles.weekViewContainer}>
+        {weekDays.map((date, index) => {
+          const isSelected = selectedDate.toDateString() === date.toDateString();
+          const isToday = date.toDateString() === new Date().toDateString();
+          const eventCount = getEventCountForDate(date);
+          const dayColor = getDayColor(eventCount);
+          const dayNames = ["S", "M", "T", "W", "T", "F", "S"];
+
+          return (
+            <Pressable
+              key={date.getTime()}
+              onPress={() => handleDatePress(date)}
+              style={styles.weekDayCell}
             >
-              <Filter size={20} color="#000000" />
-              {selectedFilters.length > 0 && (
-                <View style={styles.filterBadge}>
-                  <Text style={styles.filterBadgeText}>
-                    {selectedFilters.length}
+              <Text
+                style={[
+                  styles.weekDayLabel,
+                  { color: isSelected ? colors.red : colors.grey },
+                ]}
+              >
+                {dayNames[index]}
+              </Text>
+              <View
+                style={[
+                  styles.weekDayCircle,
+                  {
+                    backgroundColor: isSelected ? colors.red : dayColor,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.weekDayText,
+                    {
+                      color: isSelected ? "#FFF" : eventCount > 0 ? "#111" : colors.grey,
+                      fontWeight: isToday || isSelected ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  // Format time
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
+  // Render timeline event card
+  // Render timeline event card with solid colors
+  const renderTimelineCard = (event: ExpandedEvent, index: number) => {
+    const config = eventTypeConfig[event.type];
+    const startTime = event.startTime.toDate();
+    const endTime = event.endTime.toDate();
+
+    return (
+      <TouchableOpacity
+        key={event.id}
+        onPress={() => handleEventPress(event)}
+        style={styles.timelineCard}
+      >
+        {/* Time column */}
+        <View style={styles.timelineTimeColumn}>
+          <Text style={styles.timelineTimeText}>{formatTime(startTime)}</Text>
+          <View style={styles.timelineDot} />
+          <View style={styles.timelineLine} />
+        </View>
+
+        {/* Event card - solid color background */}
+        <View style={[styles.eventCard, { backgroundColor: config.bg }]}>
+          <View style={styles.eventContent}>
+            {/* Title row with badge */}
+            <HStack space="sm" className="items-center" style={styles.titleRow}>
+              <Text style={[styles.eventTitle, { color: config.text }]} numberOfLines={1}>
+                {event.title}
+              </Text>
+              <View style={[styles.typeBadge, { backgroundColor: config.badgeBg }]}>
+                <Text style={[styles.typeBadgeText, { color: config.badgeText }]}>
+                  {config.label}
+                </Text>
+              </View>
+            </HStack>
+
+            <Text style={[styles.eventTime, { color: config.text, opacity: 0.8 }]}>
+              {formatTime(startTime)} - {formatTime(endTime)}
+            </Text>
+
+            {/* Course badge if exists */}
+            {event.courseName && (
+              <View style={styles.courseBadgeContainer}>
+                <View style={[styles.courseBadge, { backgroundColor: config.text }]}>
+                  <Text style={[styles.courseBadgeText, { color: config.bg }]}>
+                    {event.courseName}
                   </Text>
                 </View>
+              </View>
+            )}
+
+            {event.location && (
+              <HStack space="xs" className="items-center" style={styles.locationContainer}>
+                <Icon as={MapPin} size="2xs" style={{ color: config.text }} />
+                <Text style={[styles.locationText, { color: config.text }]}>
+                  {event.location}
+                </Text>
+              </HStack>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <HStack className="justify-between items-center">
+          <VStack>
+            <Text style={styles.headerTitle}>Calendar</Text>
+            <Text style={styles.headerSubtitle}>
+              {formatDate(currentDate, "month-year")}
+            </Text>
+          </VStack>
+
+          <HStack space="sm">
+            <TouchableOpacity
+              style={[styles.iconButton, selectedFilters.length > 0 && styles.iconButtonActive]}
+              onPress={() => setShowFilters(!showFilters)}
+            >
+              <Icon
+                as={Filter}
+                size="sm"
+                style={{ color: selectedFilters.length > 0 ? "#111" : colors.grey }}
+              />
+              {selectedFilters.length > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{selectedFilters.length}</Text>
+                </View>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.iconButton} onPress={handleToday}>
+              <Text style={styles.todayButtonText}>Today</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.iconButton} onPress={handleCreateEvent}>
+              <Icon as={Plus} size="sm" className="text-[#FFF]" />
             </TouchableOpacity>
           </HStack>
         </HStack>
 
-        {showSearch && (
-          <View style={styles.searchContainer}>
-            <Search size={16} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search events..."
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+        {/* Month navigation */}
+        <HStack className="justify-between items-center" style={styles.monthNav}>
+          <TouchableOpacity onPress={handlePreviousMonth} style={styles.navArrow}>
+            <Icon as={ChevronLeft} size="md" className="text-[#FFF]" />
+          </TouchableOpacity>
+
+          <View style={styles.monthSelector}>
+            <Text style={styles.monthText}>{formatDate(currentDate, "month-year")}</Text>
           </View>
-        )}
 
-        {/* View Mode Toggle */}
-        <HStack space="sm" style={styles.viewToggle}>
-          <TouchableOpacity
-            style={[
-              styles.viewToggleButton,
-              viewMode === "month" && styles.viewToggleButtonActive,
-            ]}
-            onPress={() => setViewMode("month")}
-          >
-            <Text
-              style={[
-                styles.viewToggleText,
-                viewMode === "month" && styles.viewToggleTextActive,
-              ]}
-            >
-              Month
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.viewToggleButton,
-              viewMode === "week" && styles.viewToggleButtonActive,
-            ]}
-            onPress={() => setViewMode("week")}
-          >
-            <Text
-              style={[
-                styles.viewToggleText,
-                viewMode === "week" && styles.viewToggleTextActive,
-              ]}
-            >
-              Week
-            </Text>
-          </TouchableOpacity>
-        </HStack>
-
-        {/* Navigation */}
-        <HStack space="md" style={styles.navigation}>
-          <TouchableOpacity onPress={handlePrevious} style={styles.navButton}>
-            <ChevronLeft size={24} color="#000000" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleToday}>
-            <Text style={styles.currentDate}>
-              {formatDate(currentDate, "month-year")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleNext} style={styles.navButton}>
-            <ChevronRight size={24} color="#000000" />
+          <TouchableOpacity onPress={handleNextMonth} style={styles.navArrow}>
+            <Icon as={ChevronRight} size="md" className="text-[#FFF]" />
           </TouchableOpacity>
         </HStack>
       </View>
 
-      {/* Filters */}
+      {/* Filter Chips */}
       {showFilters && (
-        <View style={styles.filtersContainer}>
-          <Text style={styles.filtersTitle}>Filter by Type</Text>
-          <HStack space="sm" style={styles.filterChips}>
-            {filterOptions.map((option) => (
-              <TouchableOpacity
-                key={option.type}
-                style={[
-                  styles.filterChip,
-                  selectedFilters.includes(option.type) && {
-                    backgroundColor: option.color,
-                    borderColor: option.color,
-                  },
-                ]}
-                onPress={() => toggleFilter(option.type)}
-              >
-                <View
-                  style={[
-                    styles.filterChipDot,
-                    { backgroundColor: option.color },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    selectedFilters.includes(option.type) &&
-                      styles.filterChipTextActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </HStack>
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <HStack space="sm" style={styles.filterChips}>
+              {(Object.keys(eventTypeConfig) as EventType[]).map((type) => {
+                const isActive = selectedFilters.includes(type);
+                const config = eventTypeConfig[type];
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => toggleFilter(type)}
+                    style={[styles.filterChip, isActive && { backgroundColor: config.bg }]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        isActive && { color: "#111", fontWeight: "700" },
+                      ]}
+                    >
+                      {config.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {selectedFilters.length > 0 && (
+                <TouchableOpacity onPress={clearFilters} style={styles.clearButton}>
+                  <Text style={styles.clearButtonText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </HStack>
+          </ScrollView>
         </View>
       )}
 
-      {/* Calendar */}
+      {/* Collapsible Calendar */}
+      <Animated.View style={[styles.calendarContainer, calendarAnimatedStyle]}>
+        {/* Day headers */}
+        <View style={styles.dayHeaders}>
+          {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+            <View key={index} style={styles.dayHeaderCell}>
+              <Text style={styles.dayHeaderText}>{day}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Calendar content */}
+        <View style={styles.calendarContent}>
+          {isCollapsed ? renderWeekView() : renderMonthGrid()}
+        </View>
+      </Animated.View>
+
+      {/* Timeline */}
       <ScrollView
+        ref={scrollRef}
+        style={styles.timelineScroll}
+        onScroll={handleScroll}
+        onScrollEndDrag={handleScrollEndDrag}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        {viewMode === "month" ? (
-          <MonthCalendar
-            currentDate={currentDate}
-            events={filteredEvents}
-            onDatePress={handleDateSelect}
-            selectedDate={selectedDate}
-          />
+        {/* Date header */}
+        <View style={styles.timelineHeader}>
+          <Text style={styles.timelineDateTitle}>
+            {selectedDate.toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </Text>
+          <Text style={styles.timelineEventCount}>
+            {selectedDateEvents.length} {selectedDateEvents.length === 1 ? "event" : "events"}
+          </Text>
+        </View>
+
+        {/* Events */}
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.purple} style={styles.loader} />
+        ) : selectedDateEvents.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No events for this day</Text>
+            <TouchableOpacity onPress={handleCreateEvent} style={styles.emptyButton}>
+              <Text style={styles.emptyButtonText}>Create Event</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <WeekCalendar
-            currentDate={currentDate}
-            events={filteredEvents}
-            selectedDate={selectedDate}
-            onDatePress={handleDateSelect}
-            onEventPress={(event) => {
-              setSelectedEvent(event);
-              setShowEventDetail(true);
-            }}
-          />
+          <View style={styles.timelineList}>
+            {selectedDateEvents.map((event, index) => renderTimelineCard(event, index))}
+          </View>
         )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setShowCreateModal(true)}
-      >
-        <Plus size={24} color="#FFFFFF" />
-      </TouchableOpacity>
-
-      {/* Event List Modal */}
-      <Modal
-        visible={showEventList}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEventList(false)}
-      >
-        <EventList
-          date={selectedDate || new Date()}
-          events={selectedDateEvents}
-          onClose={() => setShowEventList(false)}
-          onEventPress={(event) => {
-            setSelectedEvent(event);
-            setShowEventList(false);
-            setShowEventDetail(true);
-          }}
-        />
-      </Modal>
-
-      {/* Create Event Modal */}
-      <Modal
+      {/* Create/Edit Event Modal */}
+      <CreateEventModal
         visible={showCreateModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
+        onClose={() => {
           setShowCreateModal(false);
-          setIsEditing(false);
           setSelectedEvent(null);
+          setIsEditing(false);
         }}
-      >
-        <CreateEventModal
-          visible={showCreateModal}
-          onClose={() => {
-            setShowCreateModal(false);
-            setIsEditing(false);
-            setSelectedEvent(null);
-          }}
-          onSave={isEditing ? handleUpdateEvent : handleCreateEvent}
-          userRole={role || 'admin'}
-          userId={user?.uid || ''}
-          availableCourses={availableCourses}
-          initialDate={selectedDate || new Date()}
-          editingEvent={isEditing ? selectedEvent : null}
-          isEditing={isEditing}
-        />
-      </Modal>
-
-      {/* Event Detail Modal */}
-      <Modal
-        visible={showEventDetail}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEventDetail(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.eventDetailModal}>
-            <View style={styles.eventDetailHeader}>
-              <Text style={styles.eventDetailTitle}>
-                {selectedEvent?.title}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowEventDetail(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.eventDetailContent}>
-              <VStack space="md">
-                <HStack space="sm" style={styles.eventTypeBadge}>
-                  <View
-                    style={[
-                      styles.eventTypeDot,
-                      {
-                        backgroundColor:
-                          selectedEvent?.type === "exam"
-                            ? "#EF4444"
-                            : selectedEvent?.type === "assignment"
-                            ? "#3B82F6"
-                            : selectedEvent?.type === "personal"
-                            ? "#10B981"
-                            : "#000000",
-                      },
-                    ]}
-                  />
-                  <Text style={styles.eventTypeText}>
-                    {selectedEvent?.type.charAt(0).toUpperCase() +
-                      selectedEvent?.type.slice(1)}
-                  </Text>
-                </HStack>
-
-                {selectedEvent?.courseName && (
-                  <HStack space="sm">
-                    <CalendarIcon size={16} color="#6B7280" />
-                    <Text style={styles.eventDetailLabel}>
-                      {selectedEvent.courseName}
-                    </Text>
-                  </HStack>
-                )}
-
-                <HStack space="sm">
-                  <CalendarIcon size={16} color="#6B7280" />
-                  <Text style={styles.eventDetailLabel}>
-                    {selectedEvent?.startTime
-                      ? formatDate(selectedEvent.startTime.toDate(), 'full')
-                      : ""}
-                  </Text>
-                </HStack>
-
-                <HStack space="sm">
-                  <CalendarIcon size={16} color="#6B7280" />
-                  <Text style={styles.eventDetailLabel}>
-                    {selectedEvent?.startTime && selectedEvent?.endTime
-                      ? `${formatTime(selectedEvent.startTime.toDate())} - ${formatTime(selectedEvent.endTime.toDate())}`
-                      : ""}
-                  </Text>
-                </HStack>
-
-                {selectedEvent?.location && (
-                  <HStack space="sm">
-                    <CalendarIcon size={16} color="#6B7280" />
-                    <Text style={styles.eventDetailLabel}>
-                      Location: {selectedEvent.location}
-                    </Text>
-                  </HStack>
-                )}
-
-                {selectedEvent?.description && (
-                  <View style={styles.descriptionContainer}>
-                    <Text style={styles.descriptionLabel}>Description</Text>
-                    <Text style={styles.descriptionText}>
-                      {selectedEvent.description}
-                    </Text>
-                  </View>
-                )}
-
-                {selectedEvent?.isAttendanceEnabled && (
-                  <View style={styles.attendanceBadge}>
-                    <Text style={styles.attendanceText}>
-                      Attendance Enabled
-                    </Text>
-                  </View>
-                )}
-              </VStack>
-            </ScrollView>
-
-            <View style={styles.eventDetailFooter}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.editButton]}
-                onPress={() => {
-                  setIsEditing(true);
-                  setShowEventDetail(false);
-                  setShowCreateModal(true);
-                }}
-              >
-                <Edit3 size={18} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() =>
-                  selectedEvent && handleDeleteEvent(selectedEvent.id)
-                }
-              >
-                <Trash2 size={18} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onSave={handleSaveEvent}
+        onDelete={isEditing ? handleDeleteEvent : undefined}
+        userRole={role || "admin"}
+        userId={user?.uid || ""}
+        availableCourses={availableCourses}
+        initialDate={selectedDate}
+        editingEvent={isEditing ? selectedEvent : null}
+        isEditing={isEditing}
+      />
     </SafeAreaView>
   );
 }
@@ -740,269 +774,314 @@ export default function AdminCalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: "#FFFFFF",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  headerTop: {
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#000000",
+    fontSize: 28,
+    fontWeight: "800",
+    color: colors.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: colors.grey,
+    marginTop: 2,
   },
   iconButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
     position: "relative",
+  },
+  iconButtonActive: {
+    backgroundColor: colors.purple,
   },
   filterBadge: {
     position: "absolute",
     top: -4,
     right: -4,
-    backgroundColor: "#EF4444",
+    backgroundColor: colors.red,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
   },
   filterBadgeText: {
-    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFF",
+  },
+  todayButtonText: {
     fontSize: 12,
     fontWeight: "600",
+    color: colors.grey,
   },
-  searchContainer: {
-    flexDirection: "row",
+  monthNav: {
+    marginTop: 16,
+  },
+  navArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
     alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    color: "#000000",
-  },
-  viewToggle: {
     justifyContent: "center",
-    marginBottom: 12,
   },
-  viewToggleButton: {
+  monthSelector: {
+    backgroundColor: colors.surface,
     paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+    paddingVertical: 8,
+    borderRadius: 12,
   },
-  viewToggleButtonActive: {
-    backgroundColor: "#000000",
-  },
-  viewToggleText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#6B7280",
-  },
-  viewToggleTextActive: {
-    color: "#FFFFFF",
-  },
-  navigation: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  navButton: {
-    padding: 4,
-  },
-  currentDate: {
-    fontSize: 16,
+  monthText: {
+    fontSize: 14,
     fontWeight: "600",
-    color: "#000000",
-    minWidth: 120,
-    textAlign: "center",
+    color: colors.textPrimary,
   },
-  filtersContainer: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
+  filterContainer: {
+    backgroundColor: colors.surface,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  filtersTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6B7280",
-    marginBottom: 8,
-    textTransform: "uppercase",
+    borderBottomColor: colors.border,
   },
   filterChips: {
-    flexWrap: "wrap",
+    paddingRight: 16,
   },
   filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.elevated,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  filterChipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+    borderColor: colors.border,
   },
   filterChipText: {
     fontSize: 13,
-    color: "#374151",
+    fontWeight: "500",
+    color: colors.textSecondary,
   },
-  filterChipTextActive: {
-    color: "#FFFFFF",
+  clearButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: colors.elevated,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.red,
   },
-  fab: {
-    position: "absolute",
-    right: 20,
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#000000",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+  clearButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.red,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
+  calendarContainer: {
+    backgroundColor: colors.surface,
+    overflow: "hidden",
   },
-  eventDetailModal: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "80%",
-  },
-  eventDetailHeader: {
+  dayHeaders: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  eventDetailTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#000000",
-    flex: 1,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  closeButtonText: {
-    fontSize: 20,
-    color: "#6B7280",
-  },
-  eventDetailContent: {
-    padding: 20,
-  },
-  eventTypeBadge: {
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  eventTypeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  eventTypeText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#000000",
-  },
-  eventDetailLabel: {
-    fontSize: 14,
-    color: "#374151",
-  },
-  descriptionContainer: {
-    marginTop: 8,
+    paddingHorizontal: 16,
     paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
+    paddingBottom: 8,
   },
-  descriptionLabel: {
-    fontSize: 14,
+  dayHeaderCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  dayHeaderText: {
+    fontSize: 13,
     fontWeight: "600",
-    color: "#000000",
+    color: colors.grey,
+  },
+  calendarContent: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  weekRow: {
+    flexDirection: "row",
     marginBottom: 8,
   },
-  descriptionText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  attendanceBadge: {
-    backgroundColor: "#D1FAE5",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  attendanceText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#059669",
-  },
-  eventDetailFooter: {
-    flexDirection: "row",
-    padding: 20,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  actionButton: {
+  dayCell: {
     flex: 1,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    aspectRatio: 1,
+  },
+  dayCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayText: {
+    fontSize: 15,
+  },
+  weekViewContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 8,
+    paddingBottom: 16,
+    justifyContent: "space-between",
+  },
+  weekDayCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  weekDayLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  weekDayCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekDayText: {
+    fontSize: 16,
+  },
+  timelineScroll: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  timelineHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  timelineDateTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  timelineEventCount: {
+    fontSize: 14,
+    color: colors.grey,
+    marginTop: 4,
+  },
+  timelineList: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  timelineCard: {
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  timelineTimeColumn: {
+    width: 60,
+    alignItems: "center",
+  },
+  timelineTimeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.grey,
+    marginBottom: 8,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.purple,
+    borderWidth: 3,
+    borderColor: colors.background,
+  },
+  timelineLine: {
+    position: "absolute",
+    top: 32,
+    bottom: -24,
+    width: 2,
+    backgroundColor: colors.border,
+  },
+  eventCard: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  eventContent: {
+    flex: 1,
+    padding: 14,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    flex: 1,
+  },
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  eventTime: {
+    fontSize: 13,
+    marginTop: 6,
+    fontWeight: "500",
+  },
+  courseBadgeContainer: {
+    marginTop: 10,
+  },
+  courseBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  courseBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  locationContainer: {
+    marginTop: 8,
+  },
+  locationText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  loader: {
+    marginTop: 40,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingTop: 60,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.grey,
+    marginBottom: 16,
+  },
+  emptyButton: {
+    backgroundColor: colors.purple,
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
+    borderRadius: 12,
   },
-  editButton: {
-    backgroundColor: "#000000",
-  },
-  deleteButton: {
-    backgroundColor: "#EF4444",
-  },
-  actionButtonText: {
+  emptyButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: "#FFF",
   },
 });

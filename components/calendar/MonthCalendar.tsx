@@ -3,6 +3,7 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { getMonthCalendarGrid, DayInfo } from '@/lib/utils/calendarUtils';
 import { ExpandedEvent } from '@/lib/hooks/useCalendarEvents';
+import { HStack } from '@/components/ui/hstack';
 
 interface MonthCalendarProps {
   currentDate: Date;
@@ -10,6 +11,22 @@ interface MonthCalendarProps {
   selectedDate: Date | null;
   onDatePress: (date: Date) => void;
 }
+
+// Event type colors for dark theme - more vibrant
+const eventColors: Record<string, string> = {
+  class: '#BCF3FF',
+  exam: '#F96857',
+  assignment: '#F9CD61',
+  personal: '#7477FF',
+};
+
+// Day cell colors - alternating pattern for visual interest
+const dayCellColors = [
+  '#2A2A2D', // Default dark
+  '#323238', // Slightly lighter
+  '#2A2A2D',
+  '#323238',
+];
 
 export function MonthCalendar({
   currentDate,
@@ -35,16 +52,22 @@ export function MonthCalendar({
   const getEventIndicators = (date: Date) => {
     const dayEvents = getEventsForDate(date);
     const types = new Set(dayEvents.map((e) => e.type));
-    return Array.from(types).slice(0, 3); // Show max 3 indicators
+    return Array.from(types).slice(0, 4);
   };
 
-  const renderDay = (dayInfo: DayInfo) => {
+  const renderDay = (dayInfo: DayInfo, weekIndex: number, dayIndex: number) => {
     const isSelected =
       selectedDate &&
       selectedDate.getTime() === dayInfo.date.getTime();
     const dayEvents = getEventsForDate(dayInfo.date);
     const hasEvents = dayEvents.length > 0;
     const indicators = getEventIndicators(dayInfo.date);
+    const isToday = dayInfo.isToday;
+    const isWeekend = dayInfo.isWeekend && dayInfo.isCurrentMonth;
+    
+    // Get alternating background color
+    const baseColorIndex = (weekIndex * 7 + dayIndex) % dayCellColors.length;
+    const baseColor = dayCellColors[baseColorIndex];
 
     return (
       <TouchableOpacity
@@ -52,25 +75,36 @@ export function MonthCalendar({
         style={styles.dayCell}
         onPress={() => onDatePress(dayInfo.date)}
         disabled={!dayInfo.isCurrentMonth}
+        activeOpacity={0.7}
       >
         <View
           style={[
             styles.dayContent,
-            dayInfo.isToday && styles.todayContent,
+            { backgroundColor: baseColor },
+            !dayInfo.isCurrentMonth && styles.otherMonthContent,
+            isWeekend && styles.weekendContent,
+            isToday && styles.todayContent,
             isSelected && styles.selectedContent,
+            hasEvents && styles.hasEventsContent,
           ]}
         >
-          <Text
-            style={[
-              styles.dayText,
-              !dayInfo.isCurrentMonth && styles.otherMonthText,
-              dayInfo.isToday && styles.todayText,
-              isSelected && styles.selectedText,
-              dayInfo.isWeekend && dayInfo.isCurrentMonth && styles.weekendText,
-            ]}
-          >
-            {dayInfo.dayOfMonth}
-          </Text>
+          {/* Day Number */}
+          <View style={styles.dayNumberContainer}>
+            <Text
+              style={[
+                styles.dayText,
+                !dayInfo.isCurrentMonth && styles.otherMonthText,
+                isWeekend && styles.weekendText,
+                isToday && styles.todayText,
+                isSelected && styles.selectedText,
+                hasEvents && !isSelected && styles.hasEventsText,
+              ]}
+            >
+              {dayInfo.dayOfMonth}
+            </Text>
+            {isToday && <View style={styles.todayDot} />}
+            {hasEvents && !isToday && <View style={styles.eventDot} />}
+          </View>
 
           {/* Event indicators */}
           {hasEvents && dayInfo.isCurrentMonth && (
@@ -80,15 +114,12 @@ export function MonthCalendar({
                   key={`${type}-${index}`}
                   style={[
                     styles.indicator,
-                    type === 'class' && styles.indicatorClass,
-                    type === 'exam' && styles.indicatorExam,
-                    type === 'assignment' && styles.indicatorAssignment,
-                    type === 'personal' && styles.indicatorPersonal,
+                    { backgroundColor: eventColors[type] || '#C5D4CA' },
                   ]}
                 />
               ))}
-              {dayEvents.length > 3 && (
-                <Text style={styles.moreIndicator}>+</Text>
+              {dayEvents.length > 4 && (
+                <Text style={styles.moreText}>+{dayEvents.length - 4}</Text>
               )}
             </View>
           )}
@@ -99,19 +130,29 @@ export function MonthCalendar({
 
   return (
     <View style={styles.container}>
-      {/* Day headers */}
+      {/* Day headers with color */}
       <View style={styles.headerRow}>
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
           <View key={day} style={styles.headerCell}>
-            <Text style={styles.headerText}>{day}</Text>
+            <View style={[
+              styles.dayHeaderBadge,
+              index === 0 || index === 6 ? styles.weekendHeaderBadge : null
+            ]}>
+              <Text style={[
+                styles.headerText,
+                index === 0 || index === 6 ? styles.weekendHeaderText : null
+              ]}>
+                {day}
+              </Text>
+            </View>
           </View>
         ))}
       </View>
 
       {/* Calendar grid */}
-      {weeks.map((week) => (
+      {weeks.map((week, weekIndex) => (
         <View key={week.weekNumber} style={styles.weekRow}>
-          {week.days.map((day) => renderDay(day))}
+          {week.days.map((day, dayIndex) => renderDay(day, weekIndex, dayIndex))}
         </View>
       ))}
     </View>
@@ -121,91 +162,132 @@ export function MonthCalendar({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 8,
+    paddingVertical: 8,
+    backgroundColor: '#1C1C1E',
   },
   headerRow: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingVertical: 8,
+    marginBottom: 4,
   },
   headerCell: {
     flex: 1,
     alignItems: 'center',
   },
+  dayHeaderBadge: {
+    backgroundColor: '#2A2A2D',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  weekendHeaderBadge: {
+    backgroundColor: '#F9685720',
+  },
   headerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#C5D4CA',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  weekendHeaderText: {
+    color: '#F96857',
   },
   weekRow: {
     flexDirection: 'row',
+    marginBottom: 4,
   },
   dayCell: {
     flex: 1,
-    aspectRatio: 1,
+    aspectRatio: 0.9,
     padding: 2,
   },
   dayContent: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     paddingTop: 8,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  otherMonthContent: {
+    opacity: 0.3,
+  },
+  weekendContent: {
+    borderColor: '#F9685720',
   },
   todayContent: {
-    backgroundColor: '#F3F4F6',
+    borderWidth: 2,
+    borderColor: '#BCF3FF',
+    backgroundColor: '#BCF3FF15',
   },
   selectedContent: {
-    backgroundColor: '#000000',
+    backgroundColor: '#BCF3FF',
+    borderColor: '#BCF3FF',
+  },
+  hasEventsContent: {
+    borderColor: '#3C443F',
+  },
+  dayNumberContainer: {
+    alignItems: 'center',
   },
   dayText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   otherMonthText: {
-    color: '#D1D5DB',
+    color: '#6B7280',
+  },
+  weekendText: {
+    color: '#F96857',
   },
   todayText: {
     fontWeight: '700',
-    color: '#000000',
+    color: '#BCF3FF',
   },
   selectedText: {
-    color: '#FFFFFF',
+    color: '#232323',
     fontWeight: '700',
   },
-  weekendText: {
-    color: '#6B7280',
+  hasEventsText: {
+    color: '#FFFFFF',
+  },
+  todayDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#BCF3FF',
+    marginTop: 2,
+  },
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#7477FF',
+    marginTop: 2,
   },
   indicatorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 2,
+    justifyContent: 'center',
+    gap: 3,
+    flexWrap: 'wrap',
+    paddingHorizontal: 4,
+    maxWidth: '100%',
   },
   indicator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  indicatorClass: {
-    backgroundColor: '#000000',
-  },
-  indicatorExam: {
-    backgroundColor: '#EF4444',
-  },
-  indicatorAssignment: {
-    backgroundColor: '#3B82F6',
-  },
-  indicatorPersonal: {
-    backgroundColor: '#10B981',
-  },
-  moreIndicator: {
-    fontSize: 8,
+  moreText: {
+    fontSize: 9,
     fontWeight: '700',
-    color: '#6B7280',
-    marginLeft: 2,
+    color: '#C5D4CA',
   },
 });

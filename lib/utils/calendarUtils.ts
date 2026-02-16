@@ -102,6 +102,26 @@ export function getMonthCalendarGrid(date: Date): WeekInfo[] {
 }
 
 /**
+ * Get array of Date objects for the week containing a specific date
+ */
+export function getWeekForDate(date: Date): Date[] {
+  const dayOfWeek = date.getDay();
+  const startOfWeek = new Date(date);
+  startOfWeek.setDate(date.getDate() - dayOfWeek);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const weekDays: Date[] = [];
+
+  for (let i = 0; i < 7; i++) {
+    const dayDate = new Date(startOfWeek);
+    dayDate.setDate(startOfWeek.getDate() + i);
+    weekDays.push(dayDate);
+  }
+
+  return weekDays;
+}
+
+/**
  * Get the week containing a specific date
  */
 export function getWeekDays(date: Date): DayInfo[] {
