@@ -7,6 +7,7 @@ import { HStack } from '@/components/ui/hstack';
 import { VStack } from '@/components/ui/vstack';
 import { Badge } from '@/components/ui/badge';
 import { CourseInstanceWithDetails, EnrollmentStatus } from '@/types';
+import { Icon } from '@/components/ui/icon';
 
 interface CourseCardProps {
   courseInstance: CourseInstanceWithDetails;
@@ -15,6 +16,8 @@ interface CourseCardProps {
   isLocked?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
+  cardColor?: { bg: string; iconBg: string; iconColor: string; textColor: string; subTextColor: string };
+  useDarkTheme?: boolean;
 }
 
 export function CourseCard({
@@ -24,6 +27,8 @@ export function CourseCard({
   isLocked = false,
   onPress,
   onLongPress,
+  cardColor,
+  useDarkTheme = false,
 }: CourseCardProps) {
   const router = useRouter();
   const { course, section, teacherNames, attendancePercentage, totalStudents } =
@@ -104,6 +109,88 @@ export function CourseCard({
 
   const borderStyle = getCardBorderStyle();
 
+  // Colorful dark theme card
+  if (useDarkTheme && cardColor) {
+    return (
+      <TouchableOpacity
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+        activeOpacity={isLocked ? 1 : 0.7}
+        disabled={isLocked}
+        style={[styles.colorfulCard, { backgroundColor: cardColor.bg }, borderStyle]}
+      >
+        {/* Elective Pending Indicator */}
+        {isElectivePending && (
+          <View style={[styles.electiveBannerDark, { backgroundColor: '#232323' }]}>
+            <AlertCircle size={14} color="#FFFFFF" />
+            <Text style={[styles.electiveBannerTextDark, { color: '#FFFFFF' }]}>
+              Select your elective course
+            </Text>
+          </View>
+        )}
+
+        <HStack className="items-center" space="md">
+          {/* Icon */}
+          <View
+            className="w-12 h-12 rounded-xl items-center justify-center"
+            style={{ backgroundColor: cardColor.iconBg }}
+          >
+            <Icon as={BookOpen} size="md" style={{ color: cardColor.iconColor }} />
+          </View>
+
+          {/* Content */}
+          <VStack className="flex-1">
+            <HStack space="sm" className="items-center">
+              <Text
+                className="text-xs font-bold px-2 py-1 rounded"
+                style={{ backgroundColor: cardColor.iconBg, color: cardColor.iconColor }}
+              >
+                {course?.courseCode || 'N/A'}
+              </Text>
+              {showElectiveBadge && (
+                <Text
+                  className="text-xs font-bold px-2 py-1 rounded"
+                  style={{ backgroundColor: '#232323', color: '#FFFFFF' }}
+                >
+                  {isElectivePending ? 'Elective (Pending)' : 'Elective'}
+                </Text>
+              )}
+            </HStack>
+            <Text
+              className="text-base font-semibold mt-1"
+              style={{ color: cardColor.textColor }}
+              numberOfLines={1}
+            >
+              {course?.name || 'Loading...'}
+            </Text>
+            <Text style={{ color: cardColor.subTextColor }} className="text-sm">
+              Section {section} • {course?.credits || 0} credits
+            </Text>
+            {teacherNames && teacherNames.length > 0 && (
+              <Text style={{ color: cardColor.subTextColor }} className="text-xs mt-1">
+                {teacherNames.join(', ')}
+              </Text>
+            )}
+          </VStack>
+
+          {/* White arrow button */}
+          {!isLocked && (
+            <View className="w-8 h-8 rounded-lg bg-white items-center justify-center">
+              <Icon as={ChevronRight} size="sm" className="text-[#232323]" />
+            </View>
+          )}
+          {isLocked && (
+            <View className="w-8 h-8 rounded-lg bg-[#3C443F] items-center justify-center">
+              <Lock size={16} color="#6B7280" />
+            </View>
+          )}
+        </HStack>
+      </TouchableOpacity>
+    );
+  }
+
+  // Light theme card (original)
   return (
     <TouchableOpacity
       onPress={handlePress}
@@ -283,6 +370,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#7477FF',
+  },
+  colorfulCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+  },
+  electiveBannerDark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#232323',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  electiveBannerTextDark: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 
