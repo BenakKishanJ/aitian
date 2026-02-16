@@ -4,7 +4,6 @@ import {
   ScrollView,
   RefreshControl,
   TextInput,
-  StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
   Alert,
@@ -15,6 +14,7 @@ import { Search, Plus, X, Building2 } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
+import { Icon } from '@/components/ui/icon';
 import { useAuth } from '@/lib/AuthContext';
 import { CourseCard } from '@/components/academics/CourseCard';
 import { SemesterGroup } from '@/components/academics/SemesterGroup';
@@ -28,6 +28,13 @@ import { getDepartmentNameById } from '@/types/constants';
 interface GroupedCourses {
   [semester: number]: CourseInstanceWithDetails[];
 }
+
+const cardColors = [
+  { bg: '#2A2A2D', iconBg: 'rgba(188, 243, 255, 0.15)', iconColor: '#BCF3FF', textColor: '#FFFFFF', subTextColor: '#C5D4CA' },
+  { bg: '#2A2A2D', iconBg: 'rgba(249, 104, 87, 0.15)', iconColor: '#F96857', textColor: '#FFFFFF', subTextColor: '#C5D4CA' },
+  { bg: '#2A2A2D', iconBg: 'rgba(249, 205, 97, 0.15)', iconColor: '#F9CD61', textColor: '#FFFFFF', subTextColor: '#C5D4CA' },
+  { bg: '#2A2A2D', iconBg: 'rgba(116, 119, 255, 0.15)', iconColor: '#7477FF', textColor: '#FFFFFF', subTextColor: '#C5D4CA' },
+];
 
 export default function AdminAcademicsScreen() {
   const { user, userData, role } = useAuth();
@@ -44,7 +51,6 @@ export default function AdminAcademicsScreen() {
 
   const pageSize = 50;
 
-  // Fetch courses based on filters
   const fetchCourses = async (loadMore = false, refresh = false) => {
     if (!user) return;
 
@@ -61,7 +67,6 @@ export default function AdminAcademicsScreen() {
         limit(pageSize)
       );
 
-      // Filter by department if selected
       if (selectedDepartment !== 'all') {
         instancesQuery = query(
           instancesRef,
@@ -73,7 +78,6 @@ export default function AdminAcademicsScreen() {
         );
       }
 
-      // Handle pagination
       if (loadMore && lastDoc) {
         instancesQuery = query(
           instancesRef,
@@ -102,13 +106,11 @@ export default function AdminAcademicsScreen() {
         (doc) => ({ id: doc.id, ...doc.data() }) as CourseInstanceWithDetails
       );
 
-      // Update pagination state
       if (instancesSnap.docs.length > 0) {
         setLastDoc(instancesSnap.docs[instancesSnap.docs.length - 1]);
       }
       setHasMore(instancesSnap.docs.length === pageSize);
 
-      // Get total students for each course
       for (const instance of courseInstances) {
         const enrollmentsRef = collection(db, COLLECTIONS.ENROLLMENTS);
         const enrollmentsQuery = query(
@@ -119,9 +121,7 @@ export default function AdminAcademicsScreen() {
         instance.totalStudents = enrollmentsSnap.size;
       }
 
-      // Fetch course details for all instances
       for (const instance of courseInstances) {
-        // Check if courseId exists before fetching
         if (instance.courseId) {
           try {
             const courseDoc = await getDoc(doc(db, COLLECTIONS.COURSES, instance.courseId));
@@ -133,7 +133,6 @@ export default function AdminAcademicsScreen() {
           }
         }
 
-        // Fetch teacher names
         if (instance.teacherIds && instance.teacherIds.length > 0) {
           const teacherNames: string[] = [];
           for (const teacherId of instance.teacherIds) {
@@ -150,14 +149,13 @@ export default function AdminAcademicsScreen() {
         }
       }
 
-      // Apply search filter if provided
       if (searchQuery && searchQuery.trim()) {
         const queryText = searchQuery.toLowerCase();
         courseInstances = courseInstances.filter(
           (instance) =>
-            instance.course?.name.toLowerCase().includes(queryText) ||
-            instance.course?.courseCode.toLowerCase().includes(queryText) ||
-            instance.section.toLowerCase().includes(queryText) ||
+            instance.course?.name?.toLowerCase().includes(queryText) ||
+            instance.course?.courseCode?.toLowerCase().includes(queryText) ||
+            instance.section?.toLowerCase().includes(queryText) ||
             getDepartmentNameById(instance.departmentId).toLowerCase().includes(queryText)
         );
       }
@@ -190,14 +188,12 @@ export default function AdminAcademicsScreen() {
     }
   };
 
-  // Fetch courses when department changes
   useEffect(() => {
     setLastDoc(null);
     setHasMore(true);
     fetchCourses(false);
   }, [selectedDepartment, user]);
 
-  // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
       setLastDoc(null);
@@ -207,7 +203,6 @@ export default function AdminAcademicsScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Group courses by semester (high to low)
   const groupedCourses: GroupedCourses = useMemo(() => {
     const grouped: GroupedCourses = {};
     
@@ -222,75 +217,75 @@ export default function AdminAcademicsScreen() {
     return grouped;
   }, [courses]);
 
-  // Get sorted semester keys (descending)
   const semesterKeys = useMemo(() => {
     return Object.keys(groupedCourses)
       .map(Number)
       .sort((a, b) => b - a);
   }, [groupedCourses]);
 
+  const getCardColor = (index: number) => {
+    return cardColors[index % cardColors.length];
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
+      <View className="px-6 pt-4 pb-4">
+        <HStack className="justify-between items-center">
           <VStack space="xs">
-            <Text className="text-2xl font-bold text-black">Academics</Text>
-            <Text className="text-sm text-gray-600">
+            <Text className="text-white text-2xl font-bold">Academics</Text>
+            <Text className="text-[#C5D4CA] text-sm">
               Manage all courses across departments
             </Text>
           </VStack>
 
           <TouchableOpacity
-            style={styles.iconButton}
+            className="w-10 h-10 rounded-xl bg-[#2A2A2D] items-center justify-center"
             onPress={() => setShowSearch(!showSearch)}
           >
-            {showSearch ? (
-              <X size={20} color="#232323" />
-            ) : (
-              <Search size={20} color="#232323" />
-            )}
+            <Icon as={showSearch ? X : Search} size="sm" className="text-white" />
           </TouchableOpacity>
         </HStack>
 
         {/* Search Bar */}
         {showSearch && (
-          <View style={styles.searchContainer}>
-            <Search size={16} color="#77867D" />
+          <View className="flex-row items-center bg-[#2A2A2D] mt-4 px-4 py-3 rounded-xl border border-[#3C443F]">
+            <Icon as={Search} size="sm" className="text-[#6B7280] mr-3" />
             <TextInput
-              style={styles.searchInput}
+              className="flex-1 text-white text-base"
               placeholder="Search courses by name, code, or section..."
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#77867D"
+              placeholderTextColor="#6B7280"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={16} color="#77867D" />
+                <Icon as={X} size="sm" className="text-[#6B7280]" />
               </TouchableOpacity>
             )}
           </View>
         )}
 
         {/* Department Filter */}
-        <View className="px-4 pb-4">
+        <View className="mt-4">
           <Select
             selectedValue={selectedDepartment}
             onValueChange={(value) => setSelectedDepartment(value as DepartmentId | 'all')}
           >
-            <SelectTrigger className="w-full bg-white border-gray-200">
+            <SelectTrigger className="w-full bg-[#2A2A2D] border-[#3C443F] rounded-xl">
               <HStack space="sm" className="items-center flex-1">
-                <Building2 size={18} color="#7477FF" />
+                <Icon as={Building2} size="sm" className="text-[#7477FF]" />
                 <SelectInput
                   placeholder="Filter by Department"
-                  className="flex-1"
+                  className="text-white flex-1"
+                  placeholderTextColor="#6B7280"
                 />
               </HStack>
               <SelectIcon className="mr-3" />
             </SelectTrigger>
             <SelectPortal>
               <SelectBackdrop />
-              <SelectContent>
+              <SelectContent className="bg-[#2A2A2D]">
                 <SelectDragIndicatorWrapper>
                   <SelectDragIndicator />
                 </SelectDragIndicatorWrapper>
@@ -309,28 +304,33 @@ export default function AdminAcademicsScreen() {
       </View>
 
       {/* Stats Summary */}
-      <View className="px-4 py-3 bg-purple-50 border-b border-purple-100">
+      <View className="px-6 py-3 bg-[#2A2A2D] border-b border-[#3C443F]">
         <HStack className="justify-between items-center">
-          <Text className="text-sm text-purple-700">
-            <Text className="font-semibold">{courses.length}</Text> courses
+          <Text className="text-sm text-[#C5D4CA]">
+            <Text className="font-semibold text-white">{courses.length}</Text> courses
           </Text>
-          <Text className="text-sm text-purple-700">
-            <Text className="font-semibold">{semesterKeys.length}</Text> semesters
+          <Text className="text-sm text-[#C5D4CA]">
+            <Text className="font-semibold text-white">{semesterKeys.length}</Text> semesters
           </Text>
           {selectedDepartment !== 'all' && (
-            <Text className="text-sm text-purple-700">
+            <Text className="text-sm text-[#BCF3FF]">
               {getDepartmentNameById(selectedDepartment)}
             </Text>
           )}
         </HStack>
       </View>
 
-      {/* Course List with Accordion */}
+      {/* Course List */}
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        className="flex-1 px-6"
+        contentContainerClassName="pb-24 pt-4"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
+          />
         }
         onScroll={({ nativeEvent }) => {
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
@@ -344,16 +344,18 @@ export default function AdminAcademicsScreen() {
         scrollEventThrottle={400}
       >
         {error && (
-          <View style={styles.errorContainer}>
-            <Text className="text-red-600 text-center">{error}</Text>
+          <View className="bg-[#F96857]/10 border border-[#F96857]/30 rounded-2xl p-4 mb-4">
+            <Text className="text-[#F96857] text-center">{error}</Text>
           </View>
         )}
 
         {!loading && semesterKeys.length === 0 && (
-          <View style={styles.emptyState}>
-            <Search size={48} color="#C5D4CA" />
-            <Text style={styles.emptyStateTitle}>No Courses Found</Text>
-            <Text style={styles.emptyStateText}>
+          <View className="items-center justify-center py-16">
+            <View className="w-20 h-20 rounded-full bg-[#2A2A2D] items-center justify-center mb-4">
+              <Icon as={Search} size="xl" className="text-[#3C443F]" />
+            </View>
+            <Text className="text-white text-lg font-semibold mb-2">No Courses Found</Text>
+            <Text className="text-[#6B7280] text-sm text-center">
               {searchQuery
                 ? 'No courses match your search criteria'
                 : selectedDepartment !== 'all'
@@ -364,7 +366,7 @@ export default function AdminAcademicsScreen() {
         )}
 
         {/* Semester Groups */}
-        {semesterKeys.map((semester) => {
+        {semesterKeys.map((semester, semIndex) => {
           const semesterCourses = groupedCourses[semester];
 
           return (
@@ -375,11 +377,13 @@ export default function AdminAcademicsScreen() {
               defaultExpanded={semester === semesterKeys[0]}
             >
               <VStack space="md">
-                {semesterCourses.map((courseInstance) => (
+                {semesterCourses.map((courseInstance, courseIndex) => (
                   <CourseCard
                     key={courseInstance.id}
                     courseInstance={courseInstance}
                     role="admin"
+                    useDarkTheme={true}
+                    cardColor={getCardColor(semIndex * 10 + courseIndex)}
                     onPress={() => {
                       router.push(`/admin/courses/${courseInstance.id}` as any);
                     }}
@@ -418,29 +422,33 @@ export default function AdminAcademicsScreen() {
 
         {/* Loading More */}
         {loading && courses.length > 0 && (
-          <View style={styles.loadingMore}>
-            <ActivityIndicator size="small" color="#7477FF" />
-            <Text style={styles.loadingText}>Loading more courses...</Text>
+          <View className="flex-row items-center justify-center py-6 gap-2">
+            <ActivityIndicator size="small" color="#BCF3FF" />
+            <Text className="text-[#6B7280] text-sm">Loading more courses...</Text>
           </View>
         )}
 
         {/* End Message */}
         {!loading && courses.length > 0 && !hasMore && (
-          <View style={styles.endMessage}>
-            <Text className="text-gray-400 text-center text-sm">
+          <View className="py-6">
+            <Text className="text-[#6B7280] text-center text-sm">
               No more courses to load
             </Text>
           </View>
         )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* FAB */}
       <TouchableOpacity
-        style={styles.fab}
+        className="absolute right-6 bottom-24 w-14 h-14 rounded-full bg-[#BCF3FF] items-center justify-center"
+        style={{
+          elevation: 5,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+        }}
         onPress={() => {
-          // Show options to create course or assign course
           Alert.alert(
             'Create New',
             'What would you like to create?',
@@ -461,122 +469,16 @@ export default function AdminAcademicsScreen() {
           );
         }}
       >
-        <Plus size={24} color="#FFFFFF" />
+        <Icon as={Plus} size="lg" className="text-[#232323]" />
       </TouchableOpacity>
 
       {/* Initial Loading */}
       {loading && courses.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#7477FF" />
-          <Text className="text-gray-600 mt-4">Loading courses...</Text>
+        <View className="absolute top-0 left-0 right-0 bottom-0 bg-[#1C1C1E] items-center justify-center">
+          <ActivityIndicator size="large" color="#BCF3FF" />
+          <Text className="text-[#C5D4CA] mt-4">Loading courses...</Text>
         </View>
       )}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9F0EB',
-  },
-  iconButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#F4F7F5',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E9F0EB',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#232323',
-    fontFamily: 'System',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#FEF0EE',
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 16,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginTop: 8,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
-  loadingMore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#77867D',
-  },
-  endMessage: {
-    paddingVertical: 16,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#7477FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#232323',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

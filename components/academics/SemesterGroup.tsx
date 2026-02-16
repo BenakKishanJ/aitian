@@ -4,8 +4,7 @@ import { ChevronDown, ChevronUp, BookOpen } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Icon } from '@/components/ui/icon';
 
 interface SemesterGroupProps {
   semester: number;
@@ -52,15 +51,15 @@ export function SemesterGroup({
   };
 
   return (
-    <Card
-      className={`mb-4 overflow-hidden ${
+    <View
+      className={`mb-4 overflow-hidden rounded-2xl ${
         isLocked ? 'opacity-70' : ''
       }`}
-      variant="outline"
     >
       <Pressable
         onPress={toggleExpand}
         className="p-4 active:opacity-80"
+        style={{ backgroundColor: '#2A2A2D' }}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
         accessibilityLabel={`${getSemesterLabel(semester)}, ${courseCount} courses`}
@@ -70,40 +69,33 @@ export function SemesterGroup({
             <View
               className={`w-10 h-10 rounded-full items-center justify-center ${
                 isLocked
-                  ? 'bg-gray-200'
-                  : 'bg-purple-100'
+                  ? 'bg-[#3C443F]'
+                  : 'bg-[#7477FF]/15'
               }`}
             >
-              <BookOpen
-                size={20}
-                color={isLocked ? '#77867D' : '#7477FF'}
+              <Icon
+                as={BookOpen}
+                size="sm"
+                className={isLocked ? 'text-[#6B7280]' : 'text-[#7477FF]'}
               />
             </View>
             <VStack>
               <Text
                 className={`text-lg font-semibold ${
-                  isLocked ? 'text-gray-500' : 'text-black'
+                  isLocked ? 'text-[#6B7280]' : 'text-white'
                 }`}
               >
                 {getSemesterLabel(semester)}
               </Text>
-              <Text className="text-sm text-gray-500">
+              <Text className="text-sm text-[#6B7280]">
                 {courseCount} {courseCount === 1 ? 'course' : 'courses'}
               </Text>
             </VStack>
           </HStack>
 
           <HStack className="items-center gap-2">
-            {isLocked && (
-              <Badge
-                variant="outline"
-                className="bg-gray-100 border-gray-300"
-              >
-                <Text className="text-xs text-gray-600">Locked</Text>
-              </Badge>
-            )}
             <Animated.View style={{ transform: [{ rotate: rotateIcon }] }}>
-              <ChevronDown size={24} color="#232323" />
+              <Icon as={ChevronDown} size="sm" className="text-[#6B7280]" />
             </Animated.View>
           </HStack>
         </HStack>
@@ -123,12 +115,12 @@ export function SemesterGroup({
             ],
           }}
         >
-          <View className="px-4 pb-4">
-            <View className="h-px bg-gray-200 mb-4" />
+          <View className="px-4 pb-4 pt-2">
+            <View className="h-px bg-[#3C443F] mb-4" />
             {children}
           </View>
         </Animated.View>
       )}
-    </Card>
+    </View>
   );
 }

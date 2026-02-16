@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   ScrollView,
-  StyleSheet,
   ActivityIndicator,
   RefreshControl,
   TextInput,
@@ -22,8 +21,6 @@ import {
   Mail,
   GraduationCap,
   CheckCircle,
-  AlertCircle,
-  Download,
 } from "lucide-react-native";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
@@ -60,8 +57,6 @@ export default function AdminEnrolledStudentsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showStudentDetail, setShowStudentDetail] = useState<EnrolledStudent | null>(null);
-
-  // Add student form state
   const [studentEmail, setStudentEmail] = useState("");
   const [addingStudent, setAddingStudent] = useState(false);
 
@@ -71,7 +66,6 @@ export default function AdminEnrolledStudentsScreen() {
     try {
       setLoading(true);
       
-      // First, check if this is an elective course instance
       const instanceRef = doc(db, COLLECTIONS.COURSE_INSTANCES, courseInstanceId);
       const instanceSnap = await getDoc(instanceRef);
       const instanceData = instanceSnap.data();
@@ -80,8 +74,6 @@ export default function AdminEnrolledStudentsScreen() {
       const enrolledStudents: EnrolledStudent[] = [];
       
       if (isElective) {
-        // For elective courses, fetch from ELECTIVE_SELECTIONS
-        // Find all students who selected this course through this slot
         const slotId = instanceData?.electiveSlotId;
         const courseId = instanceData?.courseId;
         
@@ -95,8 +87,6 @@ export default function AdminEnrolledStudentsScreen() {
           
           for (const selectionDoc of selectionsSnap.docs) {
             const selectionData = selectionDoc.data();
-            
-            // Get student details
             const studentRef = doc(db, COLLECTIONS.USERS, selectionData.studentId);
             const studentSnap = await getDoc(studentRef);
             
@@ -116,17 +106,14 @@ export default function AdminEnrolledStudentsScreen() {
           }
         }
       } else {
-        // For regular courses, fetch from ENROLLMENTS
         const enrollmentsQuery = query(
           collection(db, COLLECTIONS.ENROLLMENTS),
           where("courseInstanceId", "==", courseInstanceId)
         );
         const enrollmentsSnap = await getDocs(enrollmentsQuery);
         
-          for (const enrollmentDoc of enrollmentsSnap.docs) {
+        for (const enrollmentDoc of enrollmentsSnap.docs) {
           const enrollmentData = enrollmentDoc.data() as Enrollment;
-          
-          // Get student details
           const studentRef = doc(db, COLLECTIONS.USERS, enrollmentData.studentId);
           const studentSnap = await getDoc(studentRef);
           
@@ -147,7 +134,6 @@ export default function AdminEnrolledStudentsScreen() {
         }
       }
       
-      // Sort by student name
       enrolledStudents.sort((a, b) => {
         const nameA = a.studentName || "";
         const nameB = b.studentName || "";
@@ -215,11 +201,9 @@ export default function AdminEnrolledStudentsScreen() {
                 where("courseInstanceId", "==", courseInstanceId)
               );
               const enrollmentsSnap = await getDocs(enrollmentsQuery);
-              
               enrollmentsSnap.docs.forEach((doc) => {
                 batch.delete(doc.ref);
               });
-              
               await batch.commit();
               await fetchEnrolledStudents();
               Alert.alert("Success", "All students removed successfully");
@@ -243,7 +227,6 @@ export default function AdminEnrolledStudentsScreen() {
 
     setAddingStudent(true);
     try {
-      // Find student by email
       const usersQuery = query(
         collection(db, COLLECTIONS.USERS),
         where("email", "==", studentEmail.trim().toLowerCase()),
@@ -260,7 +243,6 @@ export default function AdminEnrolledStudentsScreen() {
       const studentId = studentDoc.id;
       const studentData = studentDoc.data() as BaseUserData;
 
-      // Check if already enrolled
       const existingEnrollmentQuery = query(
         collection(db, COLLECTIONS.ENROLLMENTS),
         where("courseInstanceId", "==", courseInstanceId),
@@ -273,7 +255,6 @@ export default function AdminEnrolledStudentsScreen() {
         return;
       }
 
-      // Create enrollment
       const enrollmentRef = doc(collection(db, COLLECTIONS.ENROLLMENTS));
       await setDoc(enrollmentRef, {
         studentId: studentId,
@@ -285,7 +266,6 @@ export default function AdminEnrolledStudentsScreen() {
         enrolledBy: user?.uid,
       });
 
-      // Reset form and refresh
       setStudentEmail("");
       setShowAddModal(false);
       await fetchEnrolledStudents();
@@ -310,100 +290,84 @@ export default function AdminEnrolledStudentsScreen() {
 
   const getEnrollmentTypeColor = (type: string) => {
     switch (type) {
-      case "auto":
-        return "#3B82F6";
-      case "manual":
-        return "#8B5CF6";
-      case "elective":
-        return "#F59E0B";
-      default:
-        return "#6B7280";
+      case "auto": return "#BCF3FF";
+      case "manual": return "#7477FF";
+      case "elective": return "#F9CD61";
+      default: return "#6B7280";
     }
   };
 
   const getEnrollmentTypeLabel = (type: string) => {
     switch (type) {
-      case "auto":
-        return "Auto";
-      case "manual":
-        return "Manual";
-      case "elective":
-        return "Elective";
-      default:
-        return type;
+      case "auto": return "Auto";
+      case "manual": return "Manual";
+      case "elective": return "Elective";
+      default: return type;
     }
   };
 
   if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
-          <Text className="text-gray-600 mt-4">Loading enrolled students...</Text>
+      <SafeAreaView className="flex-1 bg-[#1C1C1E]">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#BCF3FF" />
+          <Text className="text-[#C5D4CA] mt-4">Loading enrolled students...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
+      <View className="px-6 pt-4 pb-4">
+        <HStack className="justify-between items-center">
           <HStack space="sm" className="items-center">
-            <Shield size={20} color="#8B5CF6" />
-            <Text className="text-xl font-bold text-black">Enrolled Students</Text>
+            <Icon as={Shield} size="sm" className="text-[#7477FF]" />
+            <Text className="text-xl font-bold text-white">Enrolled Students</Text>
           </HStack>
 
           <HStack space="sm">
-            {/* Search Icon */}
             <TouchableOpacity
               onPress={() => setShowSearch(!showSearch)}
-              style={styles.iconButton}
+              className="w-10 h-10 rounded-xl bg-[#2A2A2D] items-center justify-center"
             >
-              <Icon
-                as={showSearch ? X : Search}
-                size="md"
-                className="text-black"
-              />
+              <Icon as={showSearch ? X : Search} size="sm" className="text-white" />
             </TouchableOpacity>
 
-            {/* Add Student Icon */}
             <TouchableOpacity
               onPress={() => setShowAddModal(true)}
-              style={[styles.iconButton, styles.addButton]}
+              className="w-10 h-10 rounded-xl bg-[#5AA578] items-center justify-center"
             >
-              <Icon as={UserPlus} size="md" className="text-white" />
+              <Icon as={UserPlus} size="sm" className="text-white" />
             </TouchableOpacity>
 
-            {/* Remove All Icon */}
             {students.length > 0 && (
               <TouchableOpacity
                 onPress={handleRemoveAllStudents}
-                style={[styles.iconButton, styles.deleteButton]}
+                className="w-10 h-10 rounded-xl bg-[#F96857]/20 items-center justify-center"
                 disabled={deleting}
               >
-                <Icon as={Trash2} size="md" className="text-red-600" />
+                <Icon as={Trash2} size="sm" className="text-[#F96857]" />
               </TouchableOpacity>
             )}
           </HStack>
         </HStack>
 
-        {/* Search Bar */}
         {showSearch && (
-          <View style={styles.searchContainer}>
-            <Icon as={Search} size="md" className="text-gray-400" />
+          <View className="flex-row items-center bg-[#2A2A2D] mt-4 px-4 py-3 rounded-xl border border-[#3C443F]">
+            <Icon as={Search} size="sm" className="text-[#6B7280] mr-3" />
             <TextInput
-              style={styles.searchInput}
+              className="flex-1 text-white text-base"
               placeholder="Search by name, email, or roll number..."
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#6B7280"
               autoFocus
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Icon as={X} size="sm" className="text-gray-400" />
+                <Icon as={X} size="sm" className="text-[#6B7280]" />
               </TouchableOpacity>
             )}
           </View>
@@ -411,17 +375,17 @@ export default function AdminEnrolledStudentsScreen() {
       </View>
 
       {/* Stats Bar */}
-      <View style={styles.statsBar}>
+      <View className="px-6 py-3 bg-[#2A2A2D] border-b border-[#3C443F]">
         <HStack space="lg">
           <HStack space="xs" className="items-center">
-            <Users size={18} color="#6B7280" />
-            <Text style={styles.statText}>
-              {students.length} {students.length === 1 ? "student" : "students"} enrolled
+            <Icon as={Users} size="xs" className="text-[#6B7280]" />
+            <Text className="text-sm text-[#C5D4CA]">
+              {students.length} {students.length === 1 ? "student" : "students"}
             </Text>
           </HStack>
           <HStack space="xs" className="items-center">
-            <CheckCircle size={18} color="#10B981" />
-            <Text style={styles.statText}>
+            <Icon as={CheckCircle} size="xs" className="text-[#5AA578]" />
+            <Text className="text-sm text-[#C5D4CA]">
               {students.filter((s) => s.status === "enrolled" || s.status === "auto-enrolled").length} active
             </Text>
           </HStack>
@@ -430,19 +394,26 @@ export default function AdminEnrolledStudentsScreen() {
 
       {/* Students List */}
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        className="flex-1 px-6"
+        contentContainerClassName="py-4 pb-24"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
+          />
         }
       >
         {filteredStudents.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Users size={64} color="#D1D5DB" />
-            <Text className="text-gray-500 text-lg mt-4 text-center">
+          <View className="items-center justify-center py-16">
+            <View className="w-20 h-20 rounded-full bg-[#2A2A2D] items-center justify-center mb-4">
+              <Icon as={Users} size="xl" className="text-[#3C443F]" />
+            </View>
+            <Text className="text-white text-lg font-semibold mb-2">
               {searchQuery ? "No students found" : "No students enrolled yet"}
             </Text>
-            <Text className="text-gray-400 text-sm mt-2 text-center px-8">
+            <Text className="text-[#6B7280] text-sm text-center px-8">
               {searchQuery
                 ? "Try a different search term"
                 : "Students will be automatically enrolled when they log in based on their department, semester, and section."}
@@ -453,67 +424,53 @@ export default function AdminEnrolledStudentsScreen() {
             {filteredStudents.map((student) => (
               <TouchableOpacity
                 key={student.id}
-                style={styles.studentCard}
+                className="bg-[#2A2A2D] rounded-2xl p-4"
                 onPress={() => setShowStudentDetail(student)}
                 activeOpacity={0.7}
               >
                 <HStack space="md" className="items-start">
-                  {/* Avatar */}
-                  <View style={styles.avatar}>
+                  <View className="w-12 h-12 rounded-full bg-[#7477FF] items-center justify-center">
                     <Text className="text-white font-bold text-lg">
                       {student.studentName?.charAt(0).toUpperCase() || "?"}
                     </Text>
                   </View>
 
-                  {/* Student Info */}
                   <VStack space="xs" className="flex-1">
-                    <Text className="text-base font-semibold text-black">
+                    <Text className="text-white font-semibold">
                       {student.studentName || "Unknown Student"}
                     </Text>
-                    <Text className="text-sm text-gray-500">
+                    <Text className="text-sm text-[#6B7280]">
                       {student.studentEmail || "No email"}
                     </Text>
-                    {student.studentRollNumber && (
-                      <Text className="text-xs text-gray-400">
-                        Roll: {student.studentRollNumber}
-                      </Text>
-                    )}
                     <HStack space="sm" className="items-center mt-1">
                       <View
-                        style={[
-                          styles.enrollmentTypeBadge,
-                          { backgroundColor: getEnrollmentTypeColor(student.enrollmentType) + "20" },
-                        ]}
+                        className="px-2 py-0.5 rounded"
+                        style={{ backgroundColor: `${getEnrollmentTypeColor(student.enrollmentType)}20` }}
                       >
                         <Text
-                          style={[
-                            styles.enrollmentTypeText,
-                            { color: getEnrollmentTypeColor(student.enrollmentType) },
-                          ]}
+                          className="text-xs font-semibold"
+                          style={{ color: getEnrollmentTypeColor(student.enrollmentType) }}
                         >
                           {getEnrollmentTypeLabel(student.enrollmentType)}
                         </Text>
                       </View>
-                      <Text className="text-xs text-gray-400">
+                      <Text className="text-xs text-[#6B7280]">
                         {student.enrolledAt?.toDate?.().toLocaleDateString() || "Unknown date"}
                       </Text>
                     </HStack>
                   </VStack>
 
-                  {/* Remove Button */}
                   <TouchableOpacity
                     onPress={() => handleRemoveStudent(student.id, student.studentName || "")}
-                    style={styles.removeButton}
+                    className="p-2"
                   >
-                    <Trash2 size={18} color="#EF4444" />
+                    <Icon as={Trash2} size="sm" className="text-[#F96857]" />
                   </TouchableOpacity>
                 </HStack>
               </TouchableOpacity>
             ))}
           </VStack>
         )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Add Student Modal */}
@@ -523,61 +480,54 @@ export default function AdminEnrolledStudentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.addModal}>
-            <ScrollView contentContainerStyle={styles.addModalContent}>
-              <VStack space="lg">
-                <HStack className="justify-between items-center">
-                  <HStack space="sm" className="items-center">
-                    <Shield size={20} color="#8B5CF6" />
-                    <Text className="text-xl font-bold text-black">
-                      Add Student
-                    </Text>
-                  </HStack>
-                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                    <Icon as={X} size="lg" className="text-gray-500" />
-                  </TouchableOpacity>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-[#2A2A2D] rounded-t-3xl p-6">
+            <VStack space="lg">
+              <HStack className="justify-between items-center">
+                <HStack space="sm" className="items-center">
+                  <Icon as={Shield} size="sm" className="text-[#7477FF]" />
+                  <Text className="text-xl font-bold text-white">Add Student</Text>
                 </HStack>
-
-                {/* Manual Add */}
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
-                    Student Email
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="student@example.com"
-                    value={studentEmail}
-                    onChangeText={setStudentEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </VStack>
-
-                <TouchableOpacity
-                  onPress={handleAddStudentByEmail}
-                  style={[styles.actionButton, styles.addActionButton]}
-                  disabled={addingStudent}
-                >
-                  {addingStudent ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <HStack space="sm" className="items-center">
-                      <UserPlus size={20} color="#FFFFFF" />
-                      <Text className="text-white font-semibold">Add Student</Text>
-                    </HStack>
-                  )}
+                <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                  <Icon as={X} size="lg" className="text-[#6B7280]" />
                 </TouchableOpacity>
+              </HStack>
 
-                <TouchableOpacity
-                  onPress={() => setShowAddModal(false)}
-                  style={[styles.actionButton, styles.cancelButton]}
-                >
-                  <Text className="text-gray-700 font-semibold">Cancel</Text>
-                </TouchableOpacity>
+              <VStack space="xs">
+                <Text className="text-sm font-medium text-[#C5D4CA]">Student Email</Text>
+                <TextInput
+                  className="bg-[#1C1C1E] border border-[#3C443F] rounded-xl p-4 text-white"
+                  placeholder="student@example.com"
+                  value={studentEmail}
+                  onChangeText={setStudentEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholderTextColor="#6B7280"
+                />
               </VStack>
-            </ScrollView>
+
+              <TouchableOpacity
+                onPress={handleAddStudentByEmail}
+                className="bg-[#5AA578] py-4 rounded-xl items-center"
+                disabled={addingStudent}
+              >
+                {addingStudent ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <HStack space="sm" className="items-center">
+                    <Icon as={UserPlus} size="sm" className="text-white" />
+                    <Text className="text-white font-semibold">Add Student</Text>
+                  </HStack>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowAddModal(false)}
+                className="bg-[#1C1C1E] py-4 rounded-xl items-center border border-[#3C443F]"
+              >
+                <Text className="text-[#C5D4CA] font-semibold">Cancel</Text>
+              </TouchableOpacity>
+            </VStack>
           </View>
         </View>
       </Modal>
@@ -589,277 +539,77 @@ export default function AdminEnrolledStudentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowStudentDetail(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.detailModal}>
-            <ScrollView contentContainerStyle={styles.detailModalContent}>
-              {showStudentDetail && (
-                <VStack space="lg">
-                  <HStack className="justify-between items-center">
-                    <Text className="text-xl font-bold text-black">
-                      Student Details
-                    </Text>
-                    <TouchableOpacity onPress={() => setShowStudentDetail(null)}>
-                      <Icon as={X} size="lg" className="text-gray-500" />
-                    </TouchableOpacity>
-                  </HStack>
-
-                  <View style={styles.detailAvatar}>
-                    <Text className="text-white font-bold text-3xl">
-                      {showStudentDetail.studentName?.charAt(0).toUpperCase() || "?"}
-                    </Text>
-                  </View>
-
-                  <VStack space="sm" className="items-center">
-                    <Text className="text-xl font-semibold text-black">
-                      {showStudentDetail.studentName || "Unknown Student"}
-                    </Text>
-                    <Text className="text-gray-500">
-                      {showStudentDetail.studentEmail || "No email"}
-                    </Text>
-                  </VStack>
-
-                  <View style={styles.infoCard}>
-                    <VStack space="md">
-                      {showStudentDetail.studentRollNumber && (
-                        <HStack className="justify-between">
-                          <Text className="text-gray-500">Roll Number</Text>
-                          <Text className="font-semibold text-black">
-                            {showStudentDetail.studentRollNumber}
-                          </Text>
-                        </HStack>
-                      )}
-                      {showStudentDetail.studentDepartment && (
-                        <HStack className="justify-between">
-                          <Text className="text-gray-500">Department</Text>
-                          <Text className="font-semibold text-black">
-                            {showStudentDetail.studentDepartment.toUpperCase()}
-                          </Text>
-                        </HStack>
-                      )}
-                      {showStudentDetail.studentSemester && (
-                        <HStack className="justify-between">
-                          <Text className="text-gray-500">Semester</Text>
-                          <Text className="font-semibold text-black">
-                            {showStudentDetail.studentSemester}
-                          </Text>
-                        </HStack>
-                      )}
-                      <HStack className="justify-between">
-                        <Text className="text-gray-500">Enrollment Type</Text>
-                        <View
-                          style={[
-                            styles.enrollmentTypeBadge,
-                            { backgroundColor: getEnrollmentTypeColor(showStudentDetail.enrollmentType) + "20" },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.enrollmentTypeText,
-                              { color: getEnrollmentTypeColor(showStudentDetail.enrollmentType) },
-                            ]}
-                          >
-                            {getEnrollmentTypeLabel(showStudentDetail.enrollmentType)}
-                          </Text>
-                        </View>
-                      </HStack>
-                      <HStack className="justify-between">
-                        <Text className="text-gray-500">Enrolled On</Text>
-                        <Text className="font-semibold text-black">
-                          {showStudentDetail.enrolledAt?.toDate?.().toLocaleDateString() || "Unknown"}
-                        </Text>
-                      </HStack>
-                    </VStack>
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowStudentDetail(null);
-                      handleRemoveStudent(
-                        showStudentDetail.id,
-                        showStudentDetail.studentName || ""
-                      );
-                    }}
-                    style={[styles.actionButton, styles.removeActionButton]}
-                  >
-                    <HStack space="sm" className="items-center">
-                      <Trash2 size={20} color="#FFFFFF" />
-                      <Text className="text-white font-semibold">Remove from Course</Text>
-                    </HStack>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-[#2A2A2D] rounded-t-3xl p-6">
+            {showStudentDetail && (
+              <VStack space="lg">
+                <HStack className="justify-between items-center">
+                  <Text className="text-xl font-bold text-white">Student Details</Text>
+                  <TouchableOpacity onPress={() => setShowStudentDetail(null)}>
+                    <Icon as={X} size="lg" className="text-[#6B7280]" />
                   </TouchableOpacity>
+                </HStack>
+
+                <View className="w-20 h-20 rounded-full bg-[#7477FF] items-center justify-center self-center">
+                  <Text className="text-white font-bold text-3xl">
+                    {showStudentDetail.studentName?.charAt(0).toUpperCase() || "?"}
+                  </Text>
+                </View>
+
+                <VStack space="sm" className="items-center">
+                  <Text className="text-xl font-semibold text-white">
+                    {showStudentDetail.studentName || "Unknown Student"}
+                  </Text>
+                  <Text className="text-[#6B7280]">
+                    {showStudentDetail.studentEmail || "No email"}
+                  </Text>
                 </VStack>
-              )}
-            </ScrollView>
+
+                <View className="bg-[#1C1C1E] rounded-xl p-4">
+                  <VStack space="md">
+                    <HStack className="justify-between">
+                      <Text className="text-[#6B7280]">Enrollment Type</Text>
+                      <View
+                        className="px-2 py-0.5 rounded"
+                        style={{ backgroundColor: `${getEnrollmentTypeColor(showStudentDetail.enrollmentType)}20` }}
+                      >
+                        <Text
+                          className="text-xs font-semibold"
+                          style={{ color: getEnrollmentTypeColor(showStudentDetail.enrollmentType) }}
+                        >
+                          {getEnrollmentTypeLabel(showStudentDetail.enrollmentType)}
+                        </Text>
+                      </View>
+                    </HStack>
+                    <HStack className="justify-between">
+                      <Text className="text-[#6B7280]">Enrolled On</Text>
+                      <Text className="text-white font-semibold">
+                        {showStudentDetail.enrolledAt?.toDate?.().toLocaleDateString() || "Unknown"}
+                      </Text>
+                    </HStack>
+                  </VStack>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowStudentDetail(null);
+                    handleRemoveStudent(
+                      showStudentDetail.id,
+                      showStudentDetail.studentName || ""
+                    );
+                  }}
+                  className="bg-[#F96857] py-4 rounded-xl items-center"
+                >
+                  <HStack space="sm" className="items-center">
+                    <Icon as={Trash2} size="sm" className="text-white" />
+                    <Text className="text-white font-semibold">Remove from Course</Text>
+                  </HStack>
+                </TouchableOpacity>
+              </VStack>
+            )}
           </View>
         </View>
       </Modal>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  header: {
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  iconButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-  },
-  addButton: {
-    backgroundColor: "#10B981",
-  },
-  deleteButton: {
-    backgroundColor: "#FEE2E2",
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#000000",
-  },
-  statsBar: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  statText: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    paddingHorizontal: 24,
-  },
-  studentCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#8B5CF6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  enrollmentTypeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  enrollmentTypeText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  removeButton: {
-    padding: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  addModal: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "90%",
-  },
-  addModalContent: {
-    padding: 24,
-  },
-  detailModal: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "90%",
-  },
-  detailModalContent: {
-    padding: 24,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    color: "#000000",
-    backgroundColor: "#F9FAFB",
-  },
-  actionButton: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addActionButton: {
-    backgroundColor: "#10B981",
-  },
-  cancelButton: {
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  removeActionButton: {
-    backgroundColor: "#EF4444",
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 8,
-  },
-  detailAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#8B5CF6",
-    justifyContent: "center",
-    alignItems: "center",
-    alignSelf: "center",
-  },
-  infoCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-  },
-});

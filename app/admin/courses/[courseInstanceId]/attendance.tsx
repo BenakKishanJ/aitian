@@ -128,30 +128,30 @@ export default function AdminAttendanceScreen() {
   const classAverage = getClassAverage();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
+      <View className="px-6 pt-4 pb-4">
+        <HStack className="justify-between items-center">
           <HStack space="sm" className="items-center">
-            <Shield size={20} color="#8B5CF6" />
-            <Text className="text-xl font-bold text-black">Admin: Attendance</Text>
+            <Icon as={Shield} size="sm" className="text-[#7477FF]" />
+            <Text className="text-xl font-bold text-white">Attendance</Text>
           </HStack>
 
           <HStack space="sm">
             <TouchableOpacity
               onPress={() => setShowReportModal(true)}
-              style={styles.reportButton}
+              className="w-10 h-10 rounded-xl bg-[#BCF3FF]/15 items-center justify-center"
             >
-              <Icon as={FileText} size="md" className="text-blue-600" />
+              <Icon as={FileText} size="sm" className="text-[#BCF3FF]" />
             </TouchableOpacity>
             
             {sessions.length > 0 && (
               <TouchableOpacity
                 onPress={handleDeleteAllSessions}
-                style={styles.deleteAllButton}
+                className="w-10 h-10 rounded-xl bg-[#F96857]/20 items-center justify-center"
                 disabled={deletingAll}
               >
-                <Icon as={Trash2} size="md" className="text-red-600" />
+                <Icon as={Trash2} size="sm" className="text-[#F96857]" />
               </TouchableOpacity>
             )}
           </HStack>
@@ -159,35 +159,36 @@ export default function AdminAttendanceScreen() {
       </View>
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        className="flex-1 px-6"
+        contentContainerClassName="pb-24"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#BCF3FF" colors={["#BCF3FF"]} />
         }
       >
         {/* Course Info */}
-        <View style={styles.courseInfoCard}>
-          <Text className="text-base font-semibold text-gray-700">
+        <View className="bg-[#2A2A2D] rounded-2xl p-4 mb-4">
+          <Text className="text-base font-semibold text-white">
             {courseDetails?.course?.name || "Loading..."}
           </Text>
-          <Text className="text-sm text-gray-500">
+          <Text className="text-sm text-[#6B7280]">
             {courseDetails?.course?.courseCode} | Section {courseDetails?.section}
           </Text>
         </View>
 
         {/* Class Attendance Summary */}
-        <View style={styles.summaryCard}>
+        <View className="bg-[#2A2A2D] rounded-2xl p-5 mb-4">
           <VStack space="lg">
-            <View style={styles.percentageContainer}>
+            <View className="items-center">
               <View
-                style={[
-                  styles.percentageCircle,
-                  { borderColor: classAverage >= 75 ? "#10B981" : classAverage >= 60 ? "#F59E0B" : "#EF4444" },
-                ]}
+                className="w-32 h-32 rounded-full items-center justify-center"
+                style={{
+                  borderWidth: 6,
+                  borderColor: stats.percentage >= 75 ? "#5AA578" : stats.percentage >= 60 ? "#F9CD61" : "#F96857",
+                }}
               >
                 <Text
-                  className="text-5xl font-bold"
-                  style={{ color: classAverage >= 75 ? "#10B981" : classAverage >= 60 ? "#F59E0B" : "#EF4444" }}
+                  className="text-4xl font-bold"
+                  style={{ color: stats.percentage >= 75 ? "#5AA578" : stats.percentage >= 60 ? "#F9CD61" : "#F96857" }}
                 >
                   {stats.percentage.toFixed(0)}%
                 </Text>
@@ -195,8 +196,8 @@ export default function AdminAttendanceScreen() {
             </View>
 
             <VStack space="xs" className="items-center">
-              <Text className="text-gray-500 text-lg">Class Average Attendance</Text>
-              <Text className="text-sm text-gray-400">
+              <Text className="text-[#C5D4CA] text-lg">Class Average Attendance</Text>
+              <Text className="text-sm text-[#6B7280]">
                 Based on {sessions.length} session{sessions.length !== 1 ? "s" : ""}
               </Text>
             </VStack>

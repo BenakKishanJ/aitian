@@ -3,7 +3,6 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -54,6 +53,7 @@ export default function AdminCourseDetailScreen() {
       description: "Manage course notes, PDFs, and resources",
       route: `/admin/courses/${courseInstanceId}/materials`,
       adminOnly: false,
+      color: "#BCF3FF",
     },
     {
       id: "assignments",
@@ -62,6 +62,7 @@ export default function AdminCourseDetailScreen() {
       description: "Create and manage assignments",
       route: `/admin/courses/${courseInstanceId}/assignments`,
       adminOnly: false,
+      color: "#F96857",
     },
     {
       id: "discussions",
@@ -70,6 +71,7 @@ export default function AdminCourseDetailScreen() {
       description: "Moderate discussions and Q&A",
       route: `/admin/courses/${courseInstanceId}/discussions`,
       adminOnly: false,
+      color: "#F9CD61",
     },
     {
       id: "marks",
@@ -78,6 +80,7 @@ export default function AdminCourseDetailScreen() {
       description: "View and manage student grades",
       route: `/admin/courses/${courseInstanceId}/marks`,
       adminOnly: false,
+      color: "#7477FF",
     },
     {
       id: "attendance",
@@ -86,6 +89,7 @@ export default function AdminCourseDetailScreen() {
       description: "Track and manage attendance records",
       route: `/admin/courses/${courseInstanceId}/attendance`,
       adminOnly: false,
+      color: "#5AA578",
     },
     {
       id: "enrollments",
@@ -94,6 +98,7 @@ export default function AdminCourseDetailScreen() {
       description: "View and manage student enrollments",
       route: `/admin/courses/${courseInstanceId}/enrollments`,
       adminOnly: true,
+      color: "#BCF3FF",
     },
   ];
 
@@ -115,10 +120,8 @@ export default function AdminCourseDetailScreen() {
           onPress: async () => {
             setDeleting(true);
             try {
-              // Delete all related data
               const batch = writeBatch(db);
 
-              // Delete enrollments
               const enrollmentsQuery = query(
                 collection(db, COLLECTIONS.ENROLLMENTS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -128,7 +131,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(doc.ref);
               });
 
-              // Delete materials
               const materialsQuery = query(
                 collection(db, COLLECTIONS.MATERIALS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -138,7 +140,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(doc.ref);
               });
 
-              // Delete assignments and submissions
               const assignmentsQuery = query(
                 collection(db, COLLECTIONS.ASSIGNMENTS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -156,7 +157,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(assignmentDoc.ref);
               }
 
-              // Delete discussions and replies
               const discussionsQuery = query(
                 collection(db, COLLECTIONS.DISCUSSIONS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -174,7 +174,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(discussionDoc.ref);
               }
 
-              // Delete attendance sessions and records
               const sessionsQuery = query(
                 collection(db, COLLECTIONS.ATTENDANCE_SESSIONS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -192,7 +191,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(sessionDoc.ref);
               }
 
-              // Delete marks
               const marksQuery = query(
                 collection(db, COLLECTIONS.MARKS),
                 where("courseInstanceId", "==", courseInstanceId)
@@ -202,7 +200,6 @@ export default function AdminCourseDetailScreen() {
                 batch.delete(doc.ref);
               });
 
-              // Finally delete the course instance
               const courseInstanceRef = doc(db, COLLECTIONS.COURSE_INSTANCES, courseInstanceId as string);
               const courseRef = doc(db, COLLECTIONS.COURSES, course.id);
               batch.delete(courseInstanceRef);
@@ -225,10 +222,10 @@ export default function AdminCourseDetailScreen() {
 
   if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#000000" />
-          <Text className="text-gray-600 mt-4">Loading course details...</Text>
+      <SafeAreaView className="flex-1 bg-[#1C1C1E]">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#BCF3FF" />
+          <Text className="text-[#C5D4CA] mt-4">Loading course details...</Text>
         </View>
       </SafeAreaView>
     );
@@ -236,11 +233,11 @@ export default function AdminCourseDetailScreen() {
 
   if (error || !courseDetails) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text className="text-red-600 text-center text-lg">{error}</Text>
-          <TouchableOpacity onPress={refresh} style={styles.retryButton}>
-            <Text className="text-white font-semibold">Retry</Text>
+      <SafeAreaView className="flex-1 bg-[#1C1C1E]">
+        <View className="flex-1 items-center justify-center p-6">
+          <Text className="text-[#F96857] text-lg text-center mb-4">{error}</Text>
+          <TouchableOpacity onPress={refresh} className="bg-[#BCF3FF] px-6 py-3 rounded-xl">
+            <Text className="text-[#232323] font-semibold">Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -250,11 +247,11 @@ export default function AdminCourseDetailScreen() {
   const { course, semester, section, teacherNames } = courseDetails;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
-          <Text className="text-xl font-bold text-black">Course Details</Text>
+      <View className="px-6 pt-4 pb-4">
+        <HStack className="justify-between items-center">
+          <Text className="text-xl font-bold text-white">Course Details</Text>
           <TouchableOpacity
             onPress={() => {
               Alert.alert("Course Options", "", [
@@ -272,73 +269,78 @@ export default function AdminCourseDetailScreen() {
             }}
             disabled={deleting}
           >
-            <Icon as={MoreVertical} size="md" className="text-black" />
+            <Icon as={MoreVertical} size="md" className="text-white" />
           </TouchableOpacity>
         </HStack>
       </View>
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        className="flex-1 px-6"
+        contentContainerClassName="pb-8"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
+          />
         }
       >
         {/* Course Header Card */}
-        <View style={styles.headerCard}>
+        <View className="bg-[#2A2A2D] rounded-2xl p-5 mb-4">
           <VStack space="lg">
             {/* Course Name */}
             <View>
-              <Text className="text-2xl font-bold text-black">
+              <Text className="text-2xl font-bold text-white">
                 {course.name}
               </Text>
-              <Text className="text-base text-gray-600 mt-1">
+              <Text className="text-base text-[#6B7280] mt-1">
                 {course.courseCode}
               </Text>
             </View>
 
             {/* Course Info Grid */}
-            <View style={styles.infoGrid}>
+            <View className="flex-row flex-wrap -mx-2">
               {/* Credits */}
-              <View style={styles.infoItem}>
-                <HStack space="xs" className="items-center">
-                  <Icon as={BookOpen} size="sm" className="text-gray-600" />
-                  <Text className="text-sm text-gray-500">Credits</Text>
+              <View className="w-1/2 px-2 mb-4">
+                <HStack space="xs" className="items-center mb-1">
+                  <Icon as={BookOpen} size="xs" className="text-[#6B7280]" />
+                  <Text className="text-xs text-[#6B7280]">Credits</Text>
                 </HStack>
-                <Text className="text-lg font-bold text-black mt-1">
+                <Text className="text-lg font-bold text-white">
                   {course.credits}
                 </Text>
               </View>
 
               {/* Semester */}
-              <View style={styles.infoItem}>
-                <HStack space="xs" className="items-center">
-                  <Icon as={Calendar} size="sm" className="text-gray-600" />
-                  <Text className="text-sm text-gray-500">Semester</Text>
+              <View className="w-1/2 px-2 mb-4">
+                <HStack space="xs" className="items-center mb-1">
+                  <Icon as={Calendar} size="xs" className="text-[#6B7280]" />
+                  <Text className="text-xs text-[#6B7280]">Semester</Text>
                 </HStack>
-                <Text className="text-lg font-bold text-black mt-1">
+                <Text className="text-lg font-bold text-white">
                   {semester}
                 </Text>
               </View>
 
               {/* Section */}
-              <View style={styles.infoItem}>
-                <HStack space="xs" className="items-center">
-                  <Icon as={Users} size="sm" className="text-gray-600" />
-                  <Text className="text-sm text-gray-500">Section</Text>
+              <View className="w-1/2 px-2 mb-4">
+                <HStack space="xs" className="items-center mb-1">
+                  <Icon as={Users} size="xs" className="text-[#6B7280]" />
+                  <Text className="text-xs text-[#6B7280]">Section</Text>
                 </HStack>
-                <Text className="text-lg font-bold text-black mt-1">
+                <Text className="text-lg font-bold text-white">
                   {section}
                 </Text>
               </View>
 
               {/* Department */}
-              <View style={styles.infoItem}>
-                <HStack space="xs" className="items-center">
-                  <Icon as={Building} size="sm" className="text-gray-600" />
-                  <Text className="text-sm text-gray-500">Department</Text>
+              <View className="w-1/2 px-2 mb-4">
+                <HStack space="xs" className="items-center mb-1">
+                  <Icon as={Building} size="xs" className="text-[#6B7280]" />
+                  <Text className="text-xs text-[#6B7280]">Department</Text>
                 </HStack>
-                <Text className="text-lg font-bold text-black mt-1">
+                <Text className="text-lg font-bold text-white">
                   {course.departmentId?.toUpperCase() || "N/A"}
                 </Text>
               </View>
@@ -347,14 +349,14 @@ export default function AdminCourseDetailScreen() {
             {/* Teachers */}
             {teacherNames && teacherNames.length > 0 && (
               <View>
-                <Text className="text-sm text-gray-500 mb-2">
+                <Text className="text-xs text-[#6B7280] mb-2">
                   {teacherNames.length === 1 ? "Instructor" : "Instructors"}
                 </Text>
                 <VStack space="xs">
                   {teacherNames.map((name, index) => (
                     <HStack key={index} space="xs" className="items-center">
-                      <Icon as={GraduationCap} size="sm" className="text-gray-600" />
-                      <Text className="text-base text-black">{name}</Text>
+                      <Icon as={GraduationCap} size="sm" className="text-[#BCF3FF]" />
+                      <Text className="text-base text-white">{name}</Text>
                     </HStack>
                   ))}
                 </VStack>
@@ -364,49 +366,42 @@ export default function AdminCourseDetailScreen() {
             {/* Course Type Badges */}
             <HStack space="sm">
               {course.isElective && (
-                <View style={styles.electiveBadge}>
-                  <Text className="text-sm font-semibold text-blue-600">
+                <View className="bg-[#7477FF]/15 px-3 py-1.5 rounded-lg">
+                  <Text className="text-xs font-semibold text-[#7477FF]">
                     Elective
                   </Text>
                 </View>
               )}
               {course.metadata?.labRequired && (
-                <View style={styles.labBadge}>
-                  <Text className="text-sm font-semibold text-purple-600">
+                <View className="bg-[#F9CD61]/15 px-3 py-1.5 rounded-lg">
+                  <Text className="text-xs font-semibold text-[#F9CD61]">
                     Lab Required
                   </Text>
                 </View>
               )}
             </HStack>
-
-            {/* Instance ID */}
-            <View style={styles.instanceIdContainer}>
-              <Text className="text-xs text-gray-400">
-                Instance ID: {courseInstanceId}
-              </Text>
-            </View>
           </VStack>
         </View>
 
         {/* Admin Actions Card */}
-        <View style={styles.adminCard}>
-          <Text className="text-lg font-bold text-black mb-3 px-4">
+        <View className="bg-[#2A2A2D] rounded-2xl p-4 mb-4">
+          <Text className="text-lg font-bold text-white mb-3">
             Admin Actions
           </Text>
-          <HStack space="sm" className="px-4">
+          <HStack space="sm">
             <TouchableOpacity
-              style={styles.adminActionButton}
+              className="flex-1 flex-row items-center justify-center bg-[#BCF3FF] py-3 px-4 rounded-xl"
               onPress={() => router.push(`/admin/courses/edit?courseId=${course.id}`)}
             >
-              <Icon as={Edit3} size="md" className="text-white" />
-              <Text className="text-white font-semibold ml-2">Edit Course</Text>
+              <Icon as={Edit3} size="sm" className="text-[#232323]" />
+              <Text className="text-[#232323] font-semibold ml-2">Edit Course</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.adminActionButton, styles.deleteButton]}
+              className="flex-1 flex-row items-center justify-center bg-[#F96857] py-3 px-4 rounded-xl"
               onPress={handleDeleteCourse}
               disabled={deleting}
             >
-              <Icon as={Trash2} size="md" className="text-white" />
+              <Icon as={Trash2} size="sm" className="text-white" />
               <Text className="text-white font-semibold ml-2">
                 {deleting ? "Deleting..." : "Delete"}
               </Text>
@@ -415,193 +410,59 @@ export default function AdminCourseDetailScreen() {
         </View>
 
         {/* Sections List */}
-        <View style={styles.sectionsContainer}>
-          <Text className="text-lg font-bold text-black mb-3 px-4">
+        <View>
+          <Text className="text-lg font-bold text-white mb-3">
             Course Management
           </Text>
 
-          {sections.map((section, index) => (
+          {sections.map((sectionItem, index) => (
             <TouchableOpacity
-              key={section.id}
-              style={[
-                styles.sectionCard,
-                index === sections.length - 1 && { marginBottom: 0 },
-              ]}
-              onPress={() => router.push(section.route as any)}
+              key={sectionItem.id}
+              className={`bg-[#2A2A2D] rounded-2xl p-4 mb-3 ${
+                index === sections.length - 1 ? 'mb-0' : ''
+              }`}
+              onPress={() => router.push(sectionItem.route as any)}
               activeOpacity={0.7}
             >
               <HStack className="items-center justify-between">
                 <HStack space="md" className="items-center flex-1">
-                  <View style={styles.iconContainer}>
+                  <View
+                    className="w-12 h-12 rounded-xl items-center justify-center"
+                    style={{ backgroundColor: `${sectionItem.color}15` }}
+                  >
                     <Icon
-                      as={section.icon}
+                      as={sectionItem.icon}
                       size="md"
-                      className="text-black"
+                      style={{ color: sectionItem.color }}
                     />
                   </View>
                   <VStack space="xs" className="flex-1">
                     <HStack space="sm" className="items-center">
-                      <Text className="text-base font-semibold text-black">
-                        {section.title}
+                      <Text className="text-base font-semibold text-white">
+                        {sectionItem.title}
                       </Text>
-                      {section.adminOnly && (
-                        <View style={styles.adminBadge}>
-                          <Text className="text-xs font-semibold text-purple-700">
+                      {sectionItem.adminOnly && (
+                        <View className="bg-[#7477FF]/15 px-2 py-0.5 rounded">
+                          <Text className="text-xs font-semibold text-[#7477FF]">
                             Admin
                           </Text>
                         </View>
                       )}
                     </HStack>
-                    <Text className="text-sm text-gray-500">
-                      {section.description}
+                    <Text className="text-sm text-[#6B7280]">
+                      {sectionItem.description}
                     </Text>
                   </VStack>
                 </HStack>
-                <Icon as={ChevronRight} size="md" className="text-gray-400" />
+                <Icon as={ChevronRight} size="sm" className="text-[#6B7280]" />
               </HStack>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Bottom Spacing */}
-        <View style={{ height: 24 }} />
+        <View className="h-8" />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  header: {
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  retryButton: {
-    marginTop: 16,
-    backgroundColor: "#000000",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  headerCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  infoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -8,
-  },
-  infoItem: {
-    width: "50%",
-    padding: 8,
-  },
-  electiveBadge: {
-    backgroundColor: "#DBEAFE",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  labBadge: {
-    backgroundColor: "#F3E8FF",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  instanceIdContainer: {
-    backgroundColor: "#F9FAFB",
-    padding: 8,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  adminCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  adminActionButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  deleteButton: {
-    backgroundColor: "#EF4444",
-  },
-  sectionsContainer: {
-    marginTop: 8,
-  },
-  sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    marginHorizontal: 4,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  adminBadge: {
-    backgroundColor: "#F3E8FF",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-});

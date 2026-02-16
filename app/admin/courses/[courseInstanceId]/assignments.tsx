@@ -196,55 +196,48 @@ export default function AdminAssignmentsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-[#1C1C1E]">
       {/* Header */}
-      <View style={styles.header}>
-        <HStack className="justify-between items-center px-4 py-3">
+      <View className="px-6 pt-4 pb-4">
+        <HStack className="justify-between items-center">
           <HStack space="sm" className="items-center">
-            <Shield size={20} color="#8B5CF6" />
-            <Text className="text-xl font-bold text-black">Admin: Assignments</Text>
+            <Icon as={Shield} size="sm" className="text-[#7477FF]" />
+            <Text className="text-xl font-bold text-white">Assignments</Text>
           </HStack>
 
           <HStack space="sm">
-            {/* Search Icon */}
             <TouchableOpacity
               onPress={() => setShowSearch(!showSearch)}
-              style={styles.iconButton}
+              className="w-10 h-10 rounded-xl bg-[#2A2A2D] items-center justify-center"
             >
-              <Icon
-                as={showSearch ? X : Search}
-                size="md"
-                className="text-black"
-              />
+              <Icon as={showSearch ? X : Search} size="sm" className="text-white" />
             </TouchableOpacity>
 
-            {/* Delete All Icon */}
             {assignments.length > 0 && (
               <TouchableOpacity
                 onPress={handleDeleteAll}
-                style={[styles.iconButton, styles.deleteButton]}
+                className="w-10 h-10 rounded-xl bg-[#F96857]/20 items-center justify-center"
                 disabled={deletingAll}
               >
-                <Icon as={Trash2} size="md" className="text-red-600" />
+                <Icon as={Trash2} size="sm" className="text-[#F96857]" />
               </TouchableOpacity>
             )}
           </HStack>
         </HStack>
 
-        {/* Search Bar */}
         {showSearch && (
-          <View style={styles.searchContainer}>
-            <Icon as={Search} size="md" className="text-gray-400" />
+          <View className="flex-row items-center bg-[#2A2A2D] mt-4 px-4 py-3 rounded-xl border border-[#3C443F]">
+            <Icon as={Search} size="sm" className="text-[#6B7280] mr-3" />
             <TextInput
-              style={styles.searchInput}
+              className="flex-1 text-white text-base"
               placeholder="Search assignments..."
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#6B7280"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Icon as={X} size="sm" className="text-gray-400" />
+                <Icon as={X} size="sm" className="text-[#6B7280]" />
               </TouchableOpacity>
             )}
           </View>
@@ -253,12 +246,14 @@ export default function AdminAssignmentsScreen() {
 
       {/* Assignments List */}
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        className="flex-1 px-6"
+        contentContainerClassName="py-4 pb-24"
         refreshControl={
           <RefreshControl
             refreshing={loading && assignments.length === 0}
             onRefresh={refresh}
+            tintColor="#BCF3FF"
+            colors={["#BCF3FF"]}
           />
         }
         onScroll={({ nativeEvent }) => {
@@ -269,18 +264,20 @@ export default function AdminAssignmentsScreen() {
         scrollEventThrottle={400}
       >
         {error && (
-          <View style={styles.errorContainer}>
-            <Text className="text-red-600 text-center">{error}</Text>
+          <View className="bg-[#F96857]/10 border border-[#F96857]/30 rounded-2xl p-4 mb-4">
+            <Text className="text-[#F96857] text-center">{error}</Text>
           </View>
         )}
 
         {!loading && assignments.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <FileText size={48} color="#9CA3AF" />
-            <Text className="text-gray-500 text-center text-lg mt-4">
+          <View className="items-center justify-center py-16">
+            <View className="w-20 h-20 rounded-full bg-[#2A2A2D] items-center justify-center mb-4">
+              <Icon as={FileText} size="xl" className="text-[#3C443F]" />
+            </View>
+            <Text className="text-white text-lg font-semibold mb-2">
               {searchQuery ? "No assignments found" : "No assignments yet"}
             </Text>
-            <Text className="text-gray-400 text-center text-sm mt-2">
+            <Text className="text-[#6B7280] text-sm text-center">
               Create your first assignment to get started
             </Text>
           </View>
@@ -299,37 +296,36 @@ export default function AdminAssignmentsScreen() {
         ))}
 
         {loading && assignments.length > 0 && (
-          <View style={styles.loadingMore}>
-            <ActivityIndicator size="small" color="#000000" />
-            <Text className="text-gray-600 ml-2">Loading more...</Text>
+          <View className="flex-row items-center justify-center py-4 gap-2">
+            <ActivityIndicator size="small" color="#BCF3FF" />
+            <Text className="text-[#6B7280]">Loading more...</Text>
           </View>
         )}
 
         {!loading && assignments.length > 0 && !hasMore && (
-          <View style={styles.endMessage}>
-            <Text className="text-gray-400 text-center text-sm">
+          <View className="py-4">
+            <Text className="text-[#6B7280] text-center text-sm">
               No more assignments to load
             </Text>
           </View>
         )}
-
-        <View style={{ height: 80 }} />
       </ScrollView>
 
       {/* FAB for Create */}
       <TouchableOpacity
-        style={styles.fab}
+        className="absolute right-6 bottom-24 w-14 h-14 rounded-full bg-[#F96857] items-center justify-center"
+        style={{ elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }}
         onPress={() => setShowCreateModal(true)}
         activeOpacity={0.8}
       >
-        <Icon as={Plus} size="xl" className="text-white" />
+        <Icon as={Plus} size="lg" className="text-white" />
       </TouchableOpacity>
 
       {/* Initial Loading */}
       {loading && assignments.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#000000" />
-          <Text className="text-gray-600 mt-4">Loading assignments...</Text>
+        <View className="absolute top-0 left-0 right-0 bottom-0 bg-[#1C1C1E] items-center justify-center">
+          <ActivityIndicator size="large" color="#BCF3FF" />
+          <Text className="text-[#C5D4CA] mt-4">Loading assignments...</Text>
         </View>
       )}
 
@@ -341,103 +337,88 @@ export default function AdminAssignmentsScreen() {
         onRequestClose={resetCreateForm}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.createModal}>
-            <ScrollView contentContainerStyle={styles.createModalContent}>
+          <View className="bg-[#2A2A2D] rounded-t-3xl p-6">
+            <ScrollView contentContainerClassName="pb-8">
               <VStack space="lg">
                 <HStack className="justify-between items-center">
                   <HStack space="sm" className="items-center">
-                    <Shield size={20} color="#8B5CF6" />
-                    <Text className="text-xl font-bold text-black">
+                    <Icon as={Shield} size="sm" className="text-[#7477FF]" />
+                    <Text className="text-xl font-bold text-white">
                       Create Assignment
                     </Text>
                   </HStack>
                   <TouchableOpacity onPress={resetCreateForm}>
-                    <Icon as={X} size="lg" className="text-gray-500" />
+                    <Icon as={X} size="lg" className="text-[#6B7280]" />
                   </TouchableOpacity>
                 </HStack>
 
                 <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                  <Text className="text-sm font-medium text-[#C5D4CA]">
                     Title *
                   </Text>
                   <TextInput
-                    style={styles.input}
+                    className="bg-[#1C1C1E] border border-[#3C443F] rounded-xl p-4 text-white"
                     placeholder="Assignment title"
                     value={createTitle}
                     onChangeText={setCreateTitle}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#6B7280"
                   />
                 </VStack>
 
                 <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                  <Text className="text-sm font-medium text-[#C5D4CA]">
                     Description *
                   </Text>
                   <TextInput
-                    style={[styles.input, styles.textArea]}
+                    className="bg-[#1C1C1E] border border-[#3C443F] rounded-xl p-4 text-white h-24"
                     placeholder="Describe the assignment"
                     value={createDescription}
                     onChangeText={setCreateDescription}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#6B7280"
                     multiline
                     numberOfLines={4}
                   />
                 </VStack>
 
                 <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                  <Text className="text-sm font-medium text-[#C5D4CA]">
                     Due Date * (YYYY-MM-DD HH:MM)
                   </Text>
                   <TextInput
-                    style={styles.input}
+                    className="bg-[#1C1C1E] border border-[#3C443F] rounded-xl p-4 text-white"
                     placeholder="2024-12-31 23:59"
                     value={createDueDate}
                     onChangeText={setCreateDueDate}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#6B7280"
                   />
                 </VStack>
 
                 <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
+                  <Text className="text-sm font-medium text-[#C5D4CA]">
                     Max Score
                   </Text>
                   <TextInput
-                    style={styles.input}
+                    className="bg-[#1C1C1E] border border-[#3C443F] rounded-xl p-4 text-white"
                     placeholder="100"
                     value={createMaxScore}
                     onChangeText={setCreateMaxScore}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#6B7280"
                     keyboardType="numeric"
-                  />
-                </VStack>
-
-                <VStack space="xs">
-                  <Text className="text-sm font-semibold text-gray-700">
-                    Attachment URL
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="https://example.com/file.pdf"
-                    value={createAttachmentUrl}
-                    onChangeText={setCreateAttachmentUrl}
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="url"
-                    autoCapitalize="none"
                   />
                 </VStack>
 
                 <HStack space="sm" className="mt-4">
                   <TouchableOpacity
                     onPress={resetCreateForm}
-                    style={[styles.button, styles.buttonSecondary]}
+                    className="flex-1 bg-[#1C1C1E] py-4 rounded-xl items-center border border-[#3C443F]"
                     disabled={creating}
                   >
-                    <Text className="text-black font-semibold">Cancel</Text>
+                    <Text className="text-[#C5D4CA] font-semibold">Cancel</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={handleCreate}
-                    style={[styles.button, styles.buttonPrimary]}
+                    className="flex-1 bg-[#F96857] py-4 rounded-xl items-center"
                     disabled={creating || !createTitle.trim() || !createDescription.trim()}
                   >
                     {creating ? (
@@ -460,45 +441,33 @@ export default function AdminAssignmentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowDetailModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.detailModal}>
-            <ScrollView contentContainerStyle={styles.detailModalContent}>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-[#2A2A2D] rounded-t-3xl p-6">
+            <ScrollView>
               {selectedAssignment && (
                 <VStack space="lg">
                   <HStack className="justify-between items-center">
-                    <Text className="text-xl font-bold text-black">
+                    <Text className="text-xl font-bold text-white flex-1">
                       {selectedAssignment.title}
                     </Text>
                     <TouchableOpacity onPress={() => setShowDetailModal(false)}>
-                      <Icon as={X} size="lg" className="text-gray-500" />
+                      <Icon as={X} size="lg" className="text-[#6B7280]" />
                     </TouchableOpacity>
                   </HStack>
 
                   <VStack space="sm">
-                    <Text className="text-sm font-semibold text-gray-700">
+                    <Text className="text-sm font-medium text-[#C5D4CA]">
                       Description
                     </Text>
-                    <Text className="text-base text-gray-900">
+                    <Text className="text-base text-white">
                       {selectedAssignment.description}
                     </Text>
                   </VStack>
 
                   {selectedAssignment.maxScore && (
-                    <Text className="text-sm text-gray-600">
+                    <Text className="text-sm text-[#6B7280]">
                       Max Score: {selectedAssignment.maxScore}
                     </Text>
-                  )}
-
-                  {selectedAssignment.attachmentUrl && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        // Open attachment
-                      }}
-                    >
-                      <Text className="text-sm text-blue-600 underline">
-                        View Attachment
-                      </Text>
-                    </TouchableOpacity>
                   )}
 
                   {/* Admin Actions */}
@@ -518,7 +487,7 @@ export default function AdminAssignmentsScreen() {
                         setShowDetailModal(false);
                         handleDelete(selectedAssignment.id);
                       }}
-                      style={[styles.actionButton, styles.deleteActionButton]}
+                      className="bg-[#F96857] py-4 rounded-xl items-center"
                     >
                       <Text className="text-white font-semibold">Delete Assignment</Text>
                     </TouchableOpacity>

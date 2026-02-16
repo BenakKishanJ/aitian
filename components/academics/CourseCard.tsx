@@ -1,13 +1,12 @@
 import React from 'react';
-import { TouchableOpacity, View, StyleSheet, Alert } from 'react-native';
+import { TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BookOpen, Users, TrendingUp, Lock, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { HStack } from '@/components/ui/hstack';
 import { VStack } from '@/components/ui/vstack';
-import { Badge } from '@/components/ui/badge';
-import { CourseInstanceWithDetails, EnrollmentStatus } from '@/types';
 import { Icon } from '@/components/ui/icon';
+import { CourseInstanceWithDetails, EnrollmentStatus } from '@/types';
 
 interface CourseCardProps {
   courseInstance: CourseInstanceWithDetails;
@@ -40,14 +39,10 @@ export function CourseCard({
     if (onPress) {
       onPress();
     } else {
-      // Check if this is a virtual instance (elective slot or selection)
       const isVirtualInstance = courseInstance.id.startsWith('slot-') || 
                                 courseInstance.id.startsWith('selection-');
       
       if (isVirtualInstance) {
-        // For virtual instances (elective slots not yet selected), 
-        // the onPress handler should manage the selection flow
-        // If no onPress provided, show alert
         if (!onPress) {
           Alert.alert(
             'Elective Selection',
@@ -56,7 +51,6 @@ export function CourseCard({
           );
         }
       } else {
-        // Navigate to course detail page for real instances
         router.push({
           pathname: '/academics/[courseInstanceId]',
           params: { courseInstanceId: courseInstance.id }
@@ -81,7 +75,6 @@ export function CourseCard({
 
   const isElectivePending = enrollmentStatus === 'elective-pending';
   const isElectiveEnrolled = enrollmentStatus === 'elective-enrolled';
-  // Check courseType for electives (isElective is deprecated)
   const isElectiveCourse = course?.courseType?.includes('elective') || course?.isElective;
   const showElectiveBadge = isElectiveCourse && role === 'student';
 
@@ -89,7 +82,7 @@ export function CourseCard({
     if (isLocked) {
       return {
         borderWidth: 1,
-        borderColor: '#E9F0EB',
+        borderColor: '#3C443F',
         borderStyle: 'solid' as const,
         opacity: 0.6,
       };
@@ -99,7 +92,7 @@ export function CourseCard({
         borderWidth: 2,
         borderColor: '#7477FF',
         borderStyle: 'dashed' as const,
-        borderRadius: 12,
+        borderRadius: 16,
       };
     }
     return {
@@ -109,7 +102,7 @@ export function CourseCard({
 
   const borderStyle = getCardBorderStyle();
 
-  // Colorful dark theme card
+  // Dark theme card (colorful)
   if (useDarkTheme && cardColor) {
     return (
       <TouchableOpacity
@@ -118,13 +111,28 @@ export function CourseCard({
         delayLongPress={500}
         activeOpacity={isLocked ? 1 : 0.7}
         disabled={isLocked}
-        style={[styles.colorfulCard, { backgroundColor: cardColor.bg }, borderStyle]}
+        style={[{
+          backgroundColor: cardColor.bg,
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 12,
+        }, borderStyle]}
       >
         {/* Elective Pending Indicator */}
         {isElectivePending && (
-          <View style={[styles.electiveBannerDark, { backgroundColor: '#232323' }]}>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 12,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            backgroundColor: '#232323',
+            borderRadius: 6,
+            alignSelf: 'flex-start',
+          }}>
             <AlertCircle size={14} color="#FFFFFF" />
-            <Text style={[styles.electiveBannerTextDark, { color: '#FFFFFF' }]}>
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>
               Select your elective course
             </Text>
           </View>
@@ -165,7 +173,7 @@ export function CourseCard({
               {course?.name || 'Loading...'}
             </Text>
             <Text style={{ color: cardColor.subTextColor }} className="text-sm">
-              Section {section} • {course?.credits || 0} credits
+              Section {section || 'N/A'} • {course?.credits || 0} credits
             </Text>
             {teacherNames && teacherNames.length > 0 && (
               <Text style={{ color: cardColor.subTextColor }} className="text-xs mt-1">
@@ -174,7 +182,7 @@ export function CourseCard({
             )}
           </VStack>
 
-          {/* White arrow button */}
+          {/* Arrow button */}
           {!isLocked && (
             <View className="w-8 h-8 rounded-lg bg-white items-center justify-center">
               <Icon as={ChevronRight} size="sm" className="text-[#232323]" />
@@ -198,13 +206,34 @@ export function CourseCard({
       delayLongPress={500}
       activeOpacity={isLocked ? 1 : 0.7}
       disabled={isLocked}
-      style={[styles.card, borderStyle]}
+      style={{
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        shadowColor: '#232323',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+        elevation: 2,
+        ...borderStyle,
+      }}
     >
       {/* Elective Pending Indicator */}
       {isElectivePending && (
-        <View style={styles.electiveBanner}>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 12,
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          backgroundColor: '#F0F1FF',
+          borderRadius: 6,
+          alignSelf: 'flex-start',
+        }}>
           <AlertCircle size={14} color="#7477FF" />
-          <Text style={styles.electiveBannerText}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#7477FF' }}>
             Select your elective course
           </Text>
         </View>
@@ -215,23 +244,17 @@ export function CourseCard({
         <HStack className="items-start justify-between">
           <VStack className="flex-1" space="xs">
             <HStack space="sm" className="items-center">
-              <Badge
-                variant="outline"
-                className="bg-purple-50 border-purple-200"
-              >
+              <View className="bg-purple-50 px-2 py-1 rounded border border-purple-200">
                 <Text className="text-xs font-semibold text-purple-600">
                   {course?.courseCode || 'N/A'}
                 </Text>
-              </Badge>
+              </View>
               {showElectiveBadge && (
-                <Badge
-                  variant="outline"
-                  className={
-                    isElectivePending
-                      ? 'bg-yellow-50 border-yellow-300'
-                      : 'bg-cyan-50 border-cyan-200'
-                  }
-                >
+                <View className={`px-2 py-1 rounded border ${
+                  isElectivePending
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-cyan-50 border-cyan-200'
+                }`}>
                   <Text
                     className={`text-xs font-semibold ${
                       isElectivePending ? 'text-yellow-700' : 'text-cyan-700'
@@ -239,7 +262,7 @@ export function CourseCard({
                   >
                     {isElectivePending ? 'Elective (Pending)' : 'Elective'}
                   </Text>
-                </Badge>
+                </View>
               )}
             </HStack>
             <Text className="text-lg font-bold text-black leading-tight">
@@ -248,7 +271,7 @@ export function CourseCard({
           </VStack>
 
           {/* Credits Badge */}
-          <View style={styles.creditsBadge}>
+          <View style={{ backgroundColor: '#F0F1FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center' }}>
             <Text className="text-xs font-bold text-purple-600">
               {course?.credits || 0}
             </Text>
@@ -258,9 +281,9 @@ export function CourseCard({
 
         {/* Section & Teachers */}
         <HStack space="lg" className="flex-wrap items-center">
-          <View style={styles.sectionBadge}>
+          <View style={{ backgroundColor: '#F4F7F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
             <Text className="text-xs font-medium text-gray-600">
-              Section {section}
+              Section {section || 'N/A'}
             </Text>
           </View>
 
@@ -286,7 +309,6 @@ export function CourseCard({
         {/* Bottom Row with Stats */}
         <HStack className="justify-between items-center pt-2 border-t border-gray-100">
           <HStack space="md">
-            {/* Attendance (for students only) */}
             {(role === 'student' || role === 'parent') &&
               attendancePercentage !== undefined && (
                 <HStack space="xs" className="items-center">
@@ -326,72 +348,5 @@ export function CourseCard({
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#232323',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  creditsBadge: {
-    backgroundColor: '#F0F1FF',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  sectionBadge: {
-    backgroundColor: '#F4F7F5',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  electiveBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#F0F1FF',
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  electiveBannerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#7477FF',
-  },
-  colorfulCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  electiveBannerDark: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#232323',
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  electiveBannerTextDark: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-});
 
 export default CourseCard;
