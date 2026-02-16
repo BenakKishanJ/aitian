@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
+  Users,
 } from "lucide-react-native";
 import {
   createUserWithEmailAndPassword,
@@ -21,7 +22,6 @@ import { auth, db } from "@/lib/firebase";
 
 import { DEPARTMENTS, SEMESTERS, SECTIONS } from "@/types/constants";
 
-/* Gluestack UI (local re-exports) */
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
@@ -46,8 +46,6 @@ import {
 } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
 
-
-
 export default function RegisterStudentScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -57,6 +55,7 @@ export default function RegisterStudentScreen() {
     email: "",
     password: "",
     confirmPassword: "",
+    gender: "male",
     usn: "",
     department: "",
     semester: "",
@@ -64,7 +63,6 @@ export default function RegisterStudentScreen() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Scroll animation
   const scrollY = new Animated.Value(0);
   const HEADER_MAX_HEIGHT = 280;
   const HEADER_MIN_HEIGHT = 80;
@@ -132,6 +130,7 @@ export default function RegisterStudentScreen() {
         role: "student" as const,
         name: formData.name.trim(),
         email: formData.email,
+        gender: formData.gender,
         usn: formData.usn.toUpperCase(),
         departmentId: formData.department,
         semester: parseInt(formData.semester),
@@ -200,7 +199,6 @@ export default function RegisterStudentScreen() {
           flexGrow: 1,
         }}
       >
-        {/* Animated Header with Illustration */}
         <Animated.View
           style={{
             height: headerHeight,
@@ -222,10 +220,8 @@ export default function RegisterStudentScreen() {
           />
         </Animated.View>
 
-        {/* Registration Card */}
         <View className="bg-[#1C1C1E] rounded-t-3xl px-6 pt-8 pb-8 flex-1">
           <VStack space="lg" className="flex-1">
-            {/* Header */}
             <View>
               <HStack className="items-center mb-4" space="md">
                 <TouchableOpacity
@@ -243,13 +239,11 @@ export default function RegisterStudentScreen() {
               </Text>
             </View>
 
-            {/* Personal Details Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#BCF3FF] uppercase tracking-wider">
                 Personal Details
               </Text>
 
-              {/* Name */}
               <FormControl isInvalid={!!errors.name}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -275,7 +269,48 @@ export default function RegisterStudentScreen() {
                 )}
               </FormControl>
 
-              {/* Email */}
+              <FormControl>
+                <FormControlLabel>
+                  <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
+                    Gender
+                  </FormControlLabelText>
+                </FormControlLabel>
+                <HStack space="md">
+                  <TouchableOpacity
+                    onPress={() => updateField("gender", "male")}
+                    className={`flex-1 py-3 px-4 rounded-lg flex-row items-center justify-center ${
+                      formData.gender === "male"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        formData.gender === "male" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Male
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => updateField("gender", "female")}
+                    className={`flex-1 py-3 px-4 rounded-lg flex-row items-center justify-center ${
+                      formData.gender === "female"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        formData.gender === "female" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Female
+                    </Text>
+                  </TouchableOpacity>
+                </HStack>
+              </FormControl>
+
               <FormControl isInvalid={!!errors.email}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -303,7 +338,6 @@ export default function RegisterStudentScreen() {
                 )}
               </FormControl>
 
-              {/* USN */}
               <FormControl isInvalid={!!errors.usn}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -331,13 +365,11 @@ export default function RegisterStudentScreen() {
               </FormControl>
             </VStack>
 
-            {/* Academic Details Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#F65F50] uppercase tracking-wider">
                 Academic Details
               </Text>
 
-              {/* Department */}
               <FormControl isInvalid={!!errors.department}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -381,9 +413,7 @@ export default function RegisterStudentScreen() {
                 )}
               </FormControl>
 
-              {/* Semester and Section Row */}
               <HStack space="md" className="w-full">
-                {/* Semester */}
                 <FormControl className="flex-1" isInvalid={!!errors.semester}>
                   <FormControlLabel>
                     <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -431,7 +461,6 @@ export default function RegisterStudentScreen() {
                   )}
                 </FormControl>
 
-                {/* Section */}
                 <FormControl className="flex-1" isInvalid={!!errors.section}>
                   <FormControlLabel>
                     <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -481,13 +510,11 @@ export default function RegisterStudentScreen() {
               </HStack>
             </VStack>
 
-            {/* Security Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#F9CD61] uppercase tracking-wider">
                 Security
               </Text>
 
-              {/* Password */}
               <FormControl isInvalid={!!errors.password}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -526,7 +553,6 @@ export default function RegisterStudentScreen() {
                 )}
               </FormControl>
 
-              {/* Confirm Password */}
               <FormControl isInvalid={!!errors.confirmPassword}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -568,10 +594,8 @@ export default function RegisterStudentScreen() {
               </FormControl>
             </VStack>
 
-            {/* Spacer */}
             <View className="flex-1" />
 
-            {/* Register Button */}
             <Button
               onPress={handleRegister}
               disabled={loading}
@@ -583,14 +607,12 @@ export default function RegisterStudentScreen() {
               </ButtonText>
             </Button>
 
-            {/* Divider */}
             <HStack className="items-center my-2">
               <View className="flex-1 h-px bg-[#2A2A2D]" />
               <Text className="mx-4 text-[#C5D4CA] text-sm">or</Text>
               <View className="flex-1 h-px bg-[#2A2A2D]" />
             </HStack>
 
-            {/* Back to Register */}
             <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
               <View className="border-2 border-[#F65F50] rounded-lg py-3 items-center">
                 <Text className="text-[#F65F50] font-semibold text-base">
@@ -599,7 +621,6 @@ export default function RegisterStudentScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Footer */}
             <View className="mt-4 pb-2">
               <Text className="text-center text-xs text-[#C5D4CA]">
                 By continuing, you agree to our Terms & Privacy Policy

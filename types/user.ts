@@ -10,6 +10,7 @@ export interface BaseUserData {
   email: string;
   name: string;
   role: Role;
+  gender?: 'male' | 'female';
   photoURL?: string | null;
   isActive: boolean;
   profileComplete: boolean;
@@ -168,6 +169,7 @@ export interface UserRegistrationData {
   email: string;
   name: string;
   role: Role;
+  gender?: 'male' | 'female';
   departmentId?: DepartmentId;
   semester?: number;
   section?: string;

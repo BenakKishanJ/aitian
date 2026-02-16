@@ -34,7 +34,6 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
-/* Gluestack UI (local re-exports) */
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
@@ -59,13 +58,13 @@ export default function RegisterParentScreen() {
     email: "",
     password: "",
     confirmPassword: "",
+    gender: "male",
     phone: "",
     studentUSN: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [studentError, setStudentError] = useState("");
 
-  // Scroll animation
   const scrollY = new Animated.Value(0);
   const HEADER_MAX_HEIGHT = 280;
   const HEADER_MIN_HEIGHT = 80;
@@ -83,7 +82,6 @@ export default function RegisterParentScreen() {
     extrapolate: "clamp",
   });
 
-  // Search for student when USN changes
   useEffect(() => {
     const searchStudent = async () => {
       const usn = formData.studentUSN.trim().toUpperCase();
@@ -184,6 +182,7 @@ export default function RegisterParentScreen() {
         role: "parent" as const,
         name: formData.name.trim(),
         email: formData.email,
+        gender: formData.gender,
         phone: formData.phone || null,
         linkedStudentIds: [],
         pendingStudentIds: [studentFound.id],
@@ -281,7 +280,6 @@ export default function RegisterParentScreen() {
           flexGrow: 1,
         }}
       >
-        {/* Animated Header with Illustration */}
         <Animated.View
           style={{
             height: headerHeight,
@@ -303,10 +301,8 @@ export default function RegisterParentScreen() {
           />
         </Animated.View>
 
-        {/* Registration Card */}
         <View className="bg-[#1C1C1E] rounded-t-3xl px-6 pt-8 pb-8 flex-1">
           <VStack space="lg" className="flex-1">
-            {/* Header */}
             <View>
               <HStack className="items-center mb-4" space="md">
                 <TouchableOpacity
@@ -324,13 +320,11 @@ export default function RegisterParentScreen() {
               </Text>
             </View>
 
-            {/* Parent Details Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#BCF3FF] uppercase tracking-wider">
                 Parent Details
               </Text>
 
-              {/* Name */}
               <FormControl isInvalid={!!errors.name}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -357,7 +351,48 @@ export default function RegisterParentScreen() {
                 )}
               </FormControl>
 
-              {/* Email */}
+              <FormControl>
+                <FormControlLabel>
+                  <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
+                    Gender
+                  </FormControlLabelText>
+                </FormControlLabel>
+                <HStack space="md">
+                  <TouchableOpacity
+                    onPress={() => updateField("gender", "male")}
+                    className={`flex-1 py-3 px-4 rounded-lg flex-row items-center justify-center ${
+                      formData.gender === "male"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        formData.gender === "male" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Male
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => updateField("gender", "female")}
+                    className={`flex-1 py-3 px-4 rounded-lg flex-row items-center justify-center ${
+                      formData.gender === "female"
+                        ? "bg-[#BCF3FF]"
+                        : "bg-[#2A2A2D]"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        formData.gender === "female" ? "text-black" : "text-[#C5D4CA]"
+                      }`}
+                    >
+                      Female
+                    </Text>
+                  </TouchableOpacity>
+                </HStack>
+              </FormControl>
+
               <FormControl isInvalid={!!errors.email}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -386,7 +421,6 @@ export default function RegisterParentScreen() {
                 )}
               </FormControl>
 
-              {/* Phone */}
               <FormControl isInvalid={!!errors.phone}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -415,13 +449,11 @@ export default function RegisterParentScreen() {
               </FormControl>
             </VStack>
 
-            {/* Student Link Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#F9CD61] uppercase tracking-wider">
                 Link to Student
               </Text>
 
-              {/* Student USN Search */}
               <FormControl isInvalid={!!errors.studentUSN}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -461,7 +493,6 @@ export default function RegisterParentScreen() {
                 )}
               </FormControl>
 
-              {/* Student Found Preview */}
               {searchingStudent ? (
                 <View className="bg-[#2A2A2D] p-4 rounded-2xl border border-[#3A3A3D]">
                   <HStack className="items-center" space="sm">
@@ -494,13 +525,11 @@ export default function RegisterParentScreen() {
               ) : null}
             </VStack>
 
-            {/* Security Section */}
             <VStack space="md">
               <Text className="text-sm font-semibold text-[#F65F50] uppercase tracking-wider">
                 Security
               </Text>
 
-              {/* Password */}
               <FormControl isInvalid={!!errors.password}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -540,7 +569,6 @@ export default function RegisterParentScreen() {
                 )}
               </FormControl>
 
-              {/* Confirm Password */}
               <FormControl isInvalid={!!errors.confirmPassword}>
                 <FormControlLabel>
                   <FormControlLabelText className="text-[#C5D4CA] font-medium mb-2">
@@ -583,7 +611,6 @@ export default function RegisterParentScreen() {
               </FormControl>
             </VStack>
 
-            {/* Important Information */}
             <View
               className="bg-[#2A2A2D] rounded-2xl p-4 border-l-4"
               style={{ borderLeftColor: "#F9CD61" }}
@@ -607,10 +634,8 @@ export default function RegisterParentScreen() {
               </HStack>
             </View>
 
-            {/* Spacer */}
             <View className="flex-1" />
 
-            {/* Register Button */}
             <Button
               onPress={handleRegister}
               disabled={loading || !studentFound}
@@ -622,14 +647,12 @@ export default function RegisterParentScreen() {
               </ButtonText>
             </Button>
 
-            {/* Divider */}
             <HStack className="items-center my-2">
               <View className="flex-1 h-px bg-[#2A2A2D]" />
               <Text className="mx-4 text-[#C5D4CA] text-sm">or</Text>
               <View className="flex-1 h-px bg-[#2A2A2D]" />
             </HStack>
 
-            {/* Back to Register */}
             <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
               <View className="border-2 border-[#F9CD61] rounded-lg py-3 items-center">
                 <Text className="text-[#F9CD61] font-semibold text-base">
@@ -638,7 +661,6 @@ export default function RegisterParentScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Footer */}
             <View className="mt-4 pb-2">
               <Text className="text-center text-xs text-[#C5D4CA]">
                 By continuing, you agree to our Terms & Privacy Policy
