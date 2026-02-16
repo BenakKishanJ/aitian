@@ -1,23 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   ScrollView,
-  StyleSheet,
-  RefreshControl,
   TouchableOpacity,
+  Animated,
+  Image,
   Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
-import { HStack } from "@/components/ui/hstack";
 import {
+  Bell,
   Users,
   BookOpen,
   GraduationCap,
   UserCheck,
-  Bell,
   TrendingUp,
   Activity,
   Calendar,
@@ -29,59 +25,36 @@ import {
   ChevronRight,
   ClipboardList,
   Layers,
+  Send,
+  BarChart3,
+  Shield,
 } from "lucide-react-native";
 import { useAuth } from "@/lib/AuthContext";
 import { useAdminData } from "@/lib/hooks/useAdminData";
 
-const { width } = Dimensions.get("window");
+import { Text } from "@/components/ui/text";
+import { VStack } from "@/components/ui/vstack";
+import { HStack } from "@/components/ui/hstack";
+import { Icon } from "@/components/ui/icon";
 
-interface StatCardProps {
-  icon: React.ElementType;
-  value: number | string;
-  label: string;
-  color: string;
-  onPress?: () => void;
-}
+const { width, height } = Dimensions.get("window");
 
-function StatCard({ icon: Icon, value, label, color, onPress }: StatCardProps) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      style={[styles.statCard, { borderLeftColor: color }]}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
-        <Icon size={20} color={color} />
-      </View>
-      <VStack space="xs" style={styles.statContent}>
-        <Text style={[styles.statValue, { color }]}>{value}</Text>
-        <Text style={styles.statLabel}>{label}</Text>
-      </VStack>
-    </TouchableOpacity>
-  );
-}
+const roleConfig = {
+  color: "#7477FF",
+  accentColor: "#7477FF",
+  icon: Shield,
+  label: "Admin",
+  bgColor: "#E1E3FF",
+  lightBg: "rgba(116, 119, 255, 0.25)",
+  darkBorder: "#5A5DE8",
+};
 
-interface QuickActionProps {
-  icon: React.ElementType;
-  label: string;
-  color: string;
-  onPress: () => void;
-}
-
-function QuickAction({ icon: Icon, label, color, onPress }: QuickActionProps) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      style={[styles.quickAction, { backgroundColor: `${color}10` }]}
-    >
-      <View style={[styles.quickActionIcon, { backgroundColor: color }]}>
-        <Icon size={20} color="#FFFFFF" />
-      </View>
-      <Text style={styles.quickActionLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+const quickActions = [
+  { icon: Users, label: "Manage Users", color: "#BCF3FF", route: "/admin/users" },
+  { icon: BookOpen, label: "Courses", color: "#F96857", route: "/admin/academics" },
+  { icon: Layers, label: "Electives", color: "#F9CD61", route: "/admin/electives" },
+  { icon: Send, label: "Announce", color: "#7477FF", route: "/admin/news" },
+];
 
 export default function AdminHomeScreen() {
   const { user, userData } = useAuth();
@@ -95,7 +68,29 @@ export default function AdminHomeScreen() {
     refresh,
   } = useAdminData();
 
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const scrollY = new Animated.Value(0);
+  const HEADER_MAX_HEIGHT = 320;
+  const HEADER_MIN_HEIGHT = 100;
+  const COLLAPSE_RANGE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    extrapolate: "clamp",
+  });
+
+  const imageScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE],
+    outputRange: [1, 0.6],
+    extrapolate: "clamp",
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_RANGE / 2, COLLAPSE_RANGE],
+    outputRange: [1, 0.5, 0],
+    extrapolate: "clamp",
+  });
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -118,6 +113,13 @@ export default function AdminHomeScreen() {
     });
   };
 
+  const getProfileImage = () => {
+    const gender = userData?.gender || "male";
+    return gender === "female" 
+      ? require("@/assets/images/profile/admin_female.png")
+      : require("@/assets/images/profile/admin_male.png");
+  };
+
   const formatTimeAgo = (timestamp: any) => {
     if (!timestamp) return "";
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -130,398 +132,293 @@ export default function AdminHomeScreen() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <VStack space="xs">
-          <Text style={styles.greeting}>
-            {getGreeting()}, {userData?.name?.split(" ")[0] || "Admin"}
-          </Text>
-          <Text style={styles.date}>{getFormattedDate()}</Text>
-        </VStack>
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={() => router.push("/admin/settings")}
-        >
-          <Settings size={24} color="#000000" />
-        </TouchableOpacity>
+  if (loading && !refreshing) {
+    return (
+      <View className="flex-1 bg-[#1C1C1E] items-center justify-center">
+        <View className="w-16 h-16 rounded-full bg-[#2A2A2D] items-center justify-center">
+          <View className="w-8 h-8 rounded-full border-2 border-[#7477FF] border-t-transparent animate-spin" />
+        </View>
+        <Text className="text-[#C5D4CA] mt-4 text-base">Loading...</Text>
       </View>
+    );
+  }
 
-      <ScrollView
+  return (
+    <View className="flex-1 bg-[#1C1C1E]">
+      <Animated.ScrollView
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-        contentContainerStyle={styles.scrollContent}
       >
-        {/* System Overview Stats */}
-        <View style={styles.section}>
-          <HStack space="sm" style={styles.sectionHeader}>
-            <Activity size={20} color="#000000" />
-            <Text style={styles.sectionTitle}>System Overview</Text>
-          </HStack>
+        {/* Animated Header with home.png Illustration */}
+        <Animated.View
+          style={{
+            height: headerHeight,
+            backgroundColor: "#2A2A2D",
+            justifyContent: "center",
+            alignItems: "center",
+            overflow: "hidden",
+            minHeight: HEADER_MIN_HEIGHT,
+          }}
+        >
+          <Animated.Image
+            source={require("@/assets/images/home.png")}
+            style={{
+              width: "100%",
+              height: "100%",
+              transform: [{ scale: imageScale }],
+              opacity: headerOpacity,
+            }}
+            resizeMode="cover"
+          />
           
-          <View style={styles.statsGrid}>
-            <StatCard
-              icon={Users}
-              value={stats.totalUsers}
-              label="Total Users"
-              color="#000000"
-              onPress={() => router.push("/admin/users")}
-            />
-            <StatCard
-              icon={GraduationCap}
-              value={stats.totalStudents}
-              label="Students"
-              color="#3B82F6"
-              onPress={() => router.push("/admin/users")}
-            />
-            <StatCard
-              icon={UserCheck}
-              value={stats.totalTeachers}
-              label="Teachers"
-              color="#10B981"
-              onPress={() => router.push("/admin/users")}
-            />
-            <StatCard
-              icon={BookOpen}
-              value={stats.totalCourses}
-              label="Courses"
-              color="#8B5CF6"
-              onPress={() => router.push("/admin/academics")}
-            />
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <HStack space="sm" style={styles.sectionHeader}>
-            <Plus size={20} color="#000000" />
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
-          </HStack>
-          
-          <View style={styles.quickActionsGrid}>
-            <QuickAction
-              icon={Users}
-              label="Manage Users"
-              color="#000000"
-              onPress={() => router.push("/admin/users")}
-            />
-            <QuickAction
-              icon={BookOpen}
-              label="Manage Courses"
-              color="#3B82F6"
-              onPress={() => router.push("/admin/academics")}
-            />
-            <QuickAction
-              icon={Layers}
-              label="Manage Electives"
-              color="#EC4899"
-              onPress={() => router.push("/admin/electives")}
-            />
-            <QuickAction
-              icon={ClipboardList}
-              label="Course Requests"
-              color="#F59E0B"
-              onPress={() => router.push("/admin/course-requests")}
-            />
-            <QuickAction
-              icon={Bell}
-              label="Announcements"
-              color="#8B5CF6"
-              onPress={() => router.push("/admin/news")}
-            />
-          </View>
-        </View>
-
-        {/* Today's Summary */}
-        <View style={styles.section}>
-          <HStack space="sm" style={styles.sectionHeader}>
-            <TrendingUp size={20} color="#000000" />
-            <Text style={styles.sectionTitle}>Today's Summary</Text>
-          </HStack>
-          
-          <View style={styles.summaryCard}>
-            <HStack space="lg" style={styles.summaryRow}>
-              <VStack space="xs" style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{stats.todayClasses}</Text>
-                <Text style={styles.summaryLabel}>Classes Today</Text>
-              </VStack>
-              <TouchableOpacity 
-                style={styles.summaryItem}
-                onPress={() => router.push("/admin/course-requests")}
-              >
-                <VStack space="xs">
-                  <Text style={styles.summaryValue}>{stats.pendingApprovals}</Text>
-                  <Text style={styles.summaryLabel}>Pending Approvals</Text>
-                </VStack>
-              </TouchableOpacity>
-              <VStack space="xs" style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{stats.activeUsers}</Text>
-                <Text style={styles.summaryLabel}>Active Users</Text>
-              </VStack>
-            </HStack>
-          </View>
-        </View>
-
-        {/* Department Statistics */}
-        <View style={styles.section}>
-          <HStack space="sm" style={styles.sectionHeader}>
-            <Building2 size={20} color="#000000" />
-            <Text style={styles.sectionTitle}>Departments</Text>
-          </HStack>
-          
-          {departmentStats.map((dept) => (
+          {/* Header Buttons with Role-based Colors */}
+          <View className="absolute top-12 left-0 right-0 px-6 flex-row justify-between items-center">
+            {/* Profile Button */}
             <TouchableOpacity
-              key={dept.id}
-              style={styles.departmentCard}
-              onPress={() => router.push(`/admin/departments/${dept.id}`)}
+              onPress={() => router.push("/admin/profile")}
+              className="w-12 h-12 rounded-full items-center justify-center overflow-hidden"
+              style={{
+                backgroundColor: roleConfig.lightBg,
+                borderWidth: 2,
+                borderColor: roleConfig.darkBorder,
+              }}
             >
-              <VStack space="xs" style={styles.departmentContent}>
-                <Text style={styles.departmentName}>{dept.name}</Text>
-                <HStack space="md">
-                  <Text style={styles.departmentStat}>{dept.studentCount} Students</Text>
-                  <Text style={styles.departmentStat}>{dept.teacherCount} Teachers</Text>
-                  <Text style={styles.departmentStat}>{dept.courseCount} Courses</Text>
-                </HStack>
-              </VStack>
-              <ChevronRight size={20} color="#9CA3AF" />
+              <Image
+                source={getProfileImage()}
+                style={{ width: 36, height: 36 }}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
-          ))}
-        </View>
+            
+            {/* Settings Button */}
+            <TouchableOpacity
+              onPress={() => router.push("/admin/settings")}
+              className="w-12 h-12 rounded-full items-center justify-center"
+              style={{
+                backgroundColor: roleConfig.lightBg,
+                borderWidth: 2,
+                borderColor: roleConfig.darkBorder,
+              }}
+            >
+              <Icon as={Settings} size="md" style={{ color: roleConfig.darkBorder }} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
 
-        {/* Recent Activity */}
-        <View style={styles.section}>
-          <HStack space="sm" style={styles.sectionHeader}>
-            <AlertCircle size={20} color="#000000" />
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
-          </HStack>
-          
-          {recentActivity.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No recent activity</Text>
-            </View>
-          ) : (
-            recentActivity.map((activity) => (
-              <View key={activity.id} style={styles.activityCard}>
-                <View style={styles.activityDot} />
-                <VStack space="xs" style={styles.activityContent}>
-                  <Text style={styles.activityDescription}>{activity.description}</Text>
-                  <Text style={styles.activityUser}>{activity.userName}</Text>
-                </VStack>
-                <Text style={styles.activityTime}>{formatTimeAgo(activity.timestamp)}</Text>
+        {/* Dark Content Card */}
+        <View className="bg-[#1C1C1E] rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+          {/* Greeting Section with Role-based Color */}
+          <View 
+            className="rounded-2xl p-5 mb-6"
+            style={{ backgroundColor: roleConfig.bgColor }}
+          >
+            <HStack className="items-center mb-2">
+              <View 
+                className="rounded-full px-3 py-1 mr-3"
+                style={{ backgroundColor: roleConfig.accentColor }}
+              >
+                <HStack className="items-center" space="xs">
+                  <Icon as={roleConfig.icon} size="2xs" className="text-[#232323]" />
+                  <Text className="text-[#232323] text-xs font-bold">
+                    {roleConfig.label}
+                  </Text>
+                </HStack>
               </View>
-            ))
-          )}
-        </View>
+              <Text className="text-[#232323]/70 text-sm">{getFormattedDate()}</Text>
+            </HStack>
+            
+            <Text className="text-[#232323] text-2xl font-bold">
+              {getGreeting()},
+            </Text>
+            <Text className="text-[#232323] text-2xl font-bold">
+              {userData?.name?.split(" ")[0] || "Admin"}!
+            </Text>
+          </View>
 
-        {/* Bottom Padding */}
-        <View style={{ height: 100 }} />
-      </ScrollView>
-    </SafeAreaView>
+          {/* System Overview Stats */}
+          <View className="mb-6">
+            <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+              System Overview
+            </Text>
+            <View className="flex-row flex-wrap justify-between">
+              <View className="bg-[#2A2A2D] rounded-2xl p-4 w-[48%] mb-4">
+                <View className="w-10 h-10 rounded-xl bg-[#BCF3FF]/20 items-center justify-center mb-3">
+                  <Icon as={Users} size="sm" className="text-[#BCF3FF]" />
+                </View>
+                <Text className="text-white text-2xl font-bold">{stats.totalUsers}</Text>
+                <Text className="text-[#6B7280] text-xs mt-1">Total Users</Text>
+              </View>
+              
+              <View className="bg-[#2A2A2D] rounded-2xl p-4 w-[48%] mb-4">
+                <View className="w-10 h-10 rounded-xl bg-[#F96857]/20 items-center justify-center mb-3">
+                  <Icon as={GraduationCap} size="sm" className="text-[#F96857]" />
+                </View>
+                <Text className="text-white text-2xl font-bold">{stats.totalStudents}</Text>
+                <Text className="text-[#6B7280] text-xs mt-1">Students</Text>
+              </View>
+              
+              <View className="bg-[#2A2A2D] rounded-2xl p-4 w-[48%] mb-4">
+                <View className="w-10 h-10 rounded-xl bg-[#F9CD61]/20 items-center justify-center mb-3">
+                  <Icon as={UserCheck} size="sm" className="text-[#F9CD61]" />
+                </View>
+                <Text className="text-white text-2xl font-bold">{stats.totalTeachers}</Text>
+                <Text className="text-[#6B7280] text-xs mt-1">Teachers</Text>
+              </View>
+              
+              <View className="bg-[#2A2A2D] rounded-2xl p-4 w-[48%] mb-4">
+                <View className="w-10 h-10 rounded-xl bg-[#7477FF]/20 items-center justify-center mb-3">
+                  <Icon as={BookOpen} size="sm" className="text-[#7477FF]" />
+                </View>
+                <Text className="text-white text-2xl font-bold">{stats.totalCourses}</Text>
+                <Text className="text-[#6B7280] text-xs mt-1">Courses</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Quick Actions */}
+          <View className="mb-6">
+            <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+              Quick Actions
+            </Text>
+            <View className="flex-row flex-wrap justify-between">
+              {quickActions.map((action, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => router.push(action.route as any)}
+                  className="mb-4 rounded-2xl p-4 w-[48%]"
+                  style={{ backgroundColor: action.color }}
+                >
+                  <View className="mb-3">
+                    <Icon as={action.icon} size="lg" className="text-black" />
+                  </View>
+                  <Text className="text-black font-bold text-base">
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Today's Summary */}
+          <View className="mb-6">
+            <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+              Today's Summary
+            </Text>
+            <View className="bg-[#2A2A2D] rounded-2xl p-5">
+              <HStack className="justify-around">
+                <VStack className="items-center">
+                  <Text className="text-white text-2xl font-bold">{stats.todayClasses}</Text>
+                  <Text className="text-[#6B7280] text-xs mt-1">Classes</Text>
+                </VStack>
+                <View className="w-px bg-[#3C443F]" />
+                <VStack className="items-center">
+                  <Text className="text-white text-2xl font-bold">{stats.pendingApprovals}</Text>
+                  <Text className="text-[#6B7280] text-xs mt-1">Pending</Text>
+                </VStack>
+                <View className="w-px bg-[#3C443F]" />
+                <VStack className="items-center">
+                  <Text className="text-white text-2xl font-bold">{stats.activeUsers}</Text>
+                  <Text className="text-[#6B7280] text-xs mt-1">Active</Text>
+                </VStack>
+              </HStack>
+            </View>
+          </View>
+
+          {/* Departments */}
+          <View className="mb-6">
+            <HStack className="justify-between items-center mb-4">
+              <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide">
+                Departments
+              </Text>
+              <TouchableOpacity onPress={() => router.push("/admin/departments")}>
+                <Text className="text-[#BCF3FF] text-sm font-semibold">See All</Text>
+              </TouchableOpacity>
+            </HStack>
+            
+            <View className="bg-[#2A2A2D] rounded-2xl p-5">
+              <VStack space="md">
+                {departmentStats.slice(0, 3).map((dept, index) => (
+                  <TouchableOpacity
+                    key={dept.id}
+                    onPress={() => router.push(`/admin/departments/${dept.id}`)}
+                    className={`${index !== departmentStats.length - 1 ? "pb-4 border-b border-[#3C443F]" : ""}`}
+                  >
+                    <HStack className="items-center justify-between">
+                      <VStack className="flex-1">
+                        <Text className="text-white font-semibold text-base">{dept.name}</Text>
+                        <HStack className="items-center mt-1" space="md">
+                          <Text className="text-[#6B7280] text-xs">{dept.studentCount} Students</Text>
+                          <Text className="text-[#6B7280] text-xs">{dept.teacherCount} Teachers</Text>
+                          <Text className="text-[#6B7280] text-xs">{dept.courseCount} Courses</Text>
+                        </HStack>
+                      </VStack>
+                      <Icon as={ChevronRight} size="sm" className="text-[#3C443F]" />
+                    </HStack>
+                  </TouchableOpacity>
+                ))}
+              </VStack>
+            </View>
+          </View>
+
+          {/* Recent Activity */}
+          <View className="mb-6">
+            <Text className="text-[#C5D4CA] text-xs font-semibold uppercase tracking-wide mb-4">
+              Recent Activity
+            </Text>
+            
+            {recentActivity.length === 0 ? (
+              <View className="bg-[#2A2A2D] rounded-2xl p-6 items-center border border-dashed border-[#3C443F]">
+                <Text className="text-[#6B7280] text-sm">No recent activity</Text>
+              </View>
+            ) : (
+              <View className="bg-[#2A2A2D] rounded-2xl p-5">
+                <VStack space="md">
+                  {recentActivity.slice(0, 4).map((activity, index) => (
+                    <View
+                      key={activity.id}
+                      className={`${index !== recentActivity.length - 1 ? "pb-4 border-b border-[#3C443F]" : ""}`}
+                    >
+                      <HStack className="items-start" space="sm">
+                        <View className="w-2 h-2 rounded-full bg-[#7477FF] mt-2" />
+                        <VStack className="flex-1">
+                          <Text className="text-white font-medium text-sm">{activity.description}</Text>
+                          <HStack className="items-center mt-1" space="sm">
+                            <Text className="text-[#6B7280] text-xs">{activity.userName}</Text>
+                            <Text className="text-[#3C443F]">•</Text>
+                            <Text className="text-[#6B7280] text-xs">{formatTimeAgo(activity.timestamp)}</Text>
+                          </HStack>
+                        </VStack>
+                      </HStack>
+                    </View>
+                  ))}
+                </VStack>
+              </View>
+            )}
+          </View>
+
+          {/* Error State */}
+          {error && (
+            <View className="mb-6">
+              <View className="bg-[#F96857]/10 rounded-2xl p-6 items-center">
+                <Text className="text-[#C5D4CA] text-center mb-4">{error}</Text>
+                <TouchableOpacity
+                  onPress={handleRefresh}
+                  className="bg-[#7477FF] px-6 py-3 rounded-xl"
+                >
+                  <Text className="text-white font-semibold">Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Bottom Padding */}
+          <View className="h-24" />
+        </View>
+      </Animated.ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  greeting: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#000000",
-  },
-  date: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  settingsButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-  },
-  scrollContent: {
-    paddingTop: 20,
-  },
-  section: {
-    marginBottom: 24,
-    paddingHorizontal: 20,
-  },
-  sectionHeader: {
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000000",
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  statCard: {
-    width: (width - 52) / 2,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  statContent: {
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "700",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  quickActionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  quickAction: {
-    width: (width - 52) / 2,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  quickActionLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#000000",
-  },
-  summaryCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  summaryRow: {
-    justifyContent: "space-around",
-  },
-  summaryItem: {
-    alignItems: "center",
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#000000",
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  departmentCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  departmentContent: {
-    flex: 1,
-  },
-  departmentName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#000000",
-  },
-  departmentStat: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  activityCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#000000",
-    marginRight: 12,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityDescription: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#000000",
-  },
-  activityUser: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  activityTime: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
-  emptyState: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 24,
-    alignItems: "center",
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: "#9CA3AF",
-  },
-});
